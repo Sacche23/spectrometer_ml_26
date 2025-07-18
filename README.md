@@ -27,4 +27,13 @@ pip install -r requirements.txt
 pip install jupyterlab
 ```
 
-##
+## Usage
+
+1. Process responsivity data
+```bash
+bash scripts/csv_to_npy.sh \
+    data/responsivity_data/raw/PhotoResponseSheet1.csv \
+    data/responsivity_data/processed/displacements.npy \
+    data/responsivity_data/processed/wavelengths.npy \
+    data/responsivity_data/processed/responsivity.npy
+```

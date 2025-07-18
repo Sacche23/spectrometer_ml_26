@@ -14,7 +14,7 @@ def rng_seed():
 @pytest.fixture(scope="module")
 def A():
     # load and transpose your responsivity matrix
-    R = np.load(os.path.join("data", "processed", "responsivity.npy"))  # (1000,41)
+    R = np.load(os.path.join("data", "responsivity_data" "processed", "responsivity.npy"))  # (1000,41)
     return R.T                                                          # (41,1000)
 
 def test_zero_alpha_minimum_norm_solution(A):
