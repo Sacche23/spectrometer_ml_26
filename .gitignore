@@ -1,0 +1,22 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+venv/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Logs & checkpoints
+*.log
+experiments/**/logs/
+experiments/**/checkpoints/
+
+# Data folders
+data/raw/
+data/processed/
+
+# IDE settings
+.vscode/
