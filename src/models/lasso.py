@@ -14,8 +14,8 @@ class LassoInverter:
     def solve(self, R: np.ndarray, I: np.ndarray):
         '''
         Minimize [ ||R S - I||^2 + alpha * ||S||_1 ] over vectors S
-        A: (m, n), I: (m,)
-        Returns x: (n,)
+        R: (m, n), I: (m,)
+        Returns S: (n,)
         '''
         self.model.fit(R, I)
         return self.model.coef_.copy()

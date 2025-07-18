@@ -45,7 +45,6 @@ class SpectrometerCNN(nn.Module):
         x = self.dropout(F.relu(self.fc1(x)))
         x = self.fc2(x)
 
-
         # normalize
         ms = torch.mean(x.pow(2), dim=1, keepdim=True)
         rms = torch.sqrt(ms + 1e-6)
@@ -96,7 +95,6 @@ class SpectrometerCNNGaussian(nn.Module):
         y = y / rms
 
         return y
-
 
 # V2 CNN
 class CNN2(nn.Module):
