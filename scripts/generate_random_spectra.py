@@ -7,7 +7,7 @@ VALID_METHODS = {"rand_sop", "uniform"}
 
 def generate_S(rng: np.random.Generator, n_samples: int, s_dim : int, method : str):
     if method == "uniform":
-        return rng.uniform(size=(n_samples, s_dim)).astype(np.float32)
+        return rng.uniform(size=(n_samples, s_dim)).astype(float)
     elif method == "rand_sop":
         return sum_of_peaks(rng, n_samples, s_dim)
     else:
@@ -36,7 +36,7 @@ def sum_of_peaks(
     wavelengths = np.linspace(low, high, num_points)
     span = high - low
 
-    data = np.zeros((num_spectra, num_points), dtype=np.float32)
+    data = np.zeros((num_spectra, num_points), dtype=float)
     for i in range(num_spectra):
         # number of peaks
         Np = 0
@@ -77,7 +77,7 @@ def main(seed: int,
     rng = np.random.default_rng(seed)
 
     if method == "uniform":
-        S = rng.uniform(size=(n_samples, s_dim)).astype(np.float32)
+        S = rng.uniform(size=(n_samples, s_dim)).astype(float)
     elif method == "rand_sop":
         S = sum_of_peaks(rng=rng, num_spectra=n_samples, num_points=s_dim)
 
