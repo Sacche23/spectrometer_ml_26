@@ -1,0 +1,14 @@
+python3 src/train.py \
+	--dataset rand_sop \
+	--model cnn2 \
+	--seed 42 \
+	--batch-size 128 \
+	--num-epochs 50 \
+	--learning-rate 1e-3 \
+	--learning-rate-decay 0.6 \
+	--learning-rate-period 20 \
+	--gaussian-noise True \
+	--gaussian-noise-std 1e-4 \
+	--validation-size 200 \
+	--num-workers 4 \
+	--device cpu
