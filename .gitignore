@@ -15,8 +15,8 @@ experiments/**/logs/
 experiments/**/checkpoints/
 
 # Data folders
-data/raw/
-data/processed/
+data/responsivity_data
+data/spectra_data
 
 # IDE settings
 .vscode/
