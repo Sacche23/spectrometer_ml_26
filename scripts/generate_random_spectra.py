@@ -27,10 +27,9 @@ def sum_of_peaks(
     lam: float = 4.0,
     width_frac: tuple[float, float] = (0.005, 0.02),
     noise_std: float = 0.0,
-    baseline_std: float = 0.001,
-):
+    baseline_std: float = 0.001):
     """
-    Generate spectra as a sum of N Gaussian peaks (N ~ Poisson(lam)),
+    Generate spectra as a sum of N Gaussian peaks (N ~ ZTPoisson(lam)),
     then add a linear baseline + noise and normalize to unit RMS.
     """
     # build wavelength axis
@@ -40,7 +39,9 @@ def sum_of_peaks(
     data = np.zeros((num_spectra, num_points), dtype=np.float32)
     for i in range(num_spectra):
         # number of peaks
-        Np = rng.poisson(lam)
+        Np = 0
+        while Np == 0:
+            Np = rng.poisson(lam) #zero-truncated poission
         # add peaks
         for _ in range(Np):
             center = rng.uniform(low, high)
