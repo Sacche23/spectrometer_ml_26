@@ -37,3 +37,36 @@ bash scripts/csv_to_npy.sh \
     data/responsivity_data/processed/wavelengths.npy \
     data/responsivity_data/processed/responsivity.npy
 ```
+
+## Customization
+
+### Adding custom randomly simulated spectra method:
+
+1. **Open `scripts/generate_random_spectra.py`**
+2. **Add your method name to `VALID_METHODS = {"rand_sop", "uniform", "<your_method>"}`**
+3. **Add your method to `generate_S`**
+```python
+    def generate_S(rng: np.random.Generator, n_samples: int, s_dim : int, method : str):
+        if method == "uniform":
+            return rng.uniform(size=(n_samples, s_dim)).astype(np.float32)
+        elif method == "rand_sop":
+            return sum_of_peaks(rng, n_samples, s_dim)
+        elif method == "<your_method>:
+            return <your_function>(rng, n_samples, s_dim)
+```
+4. **Implement your function under `Custom Generation Functions` section**
+5. **Create a dataset in `src/datasets/datasets.py` under `SIMULATED DATASETS`**
+```python
+@register_dataset("<your_method>")
+class SumOfPeaksDataset(NPYCachedDataset):
+    def __init__(self, root, seed=42, transform=None):
+        super().__init__(root, name="<your_method>", seed=seed, transform=transform)
+```
+
+Now you can run `python3 scripts/generate_random_spectra.py` --method <your_method> and
+then train the model on this dataset!
+
+### Adding custom dataset:
+
+
+
