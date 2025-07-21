@@ -2,8 +2,31 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+# ====================================================================================
+# Registry
+# ====================================================================================
+
+MODEL_REGISTRY = {}
+
+def register_model(name):
+    def decorator(cls):
+        MODEL_REGISTRY[name] = cls
+        return cls
+    return decorator
+
+def get_model(name):
+    try:
+        return MODEL_REGISTRY[name]
+    except KeyError:
+        raise ValueError(f"Unknown model '{name}'. Available: {list(MODEL_REGISTRY)}")
+
+# ====================================================================================
+# Model Classes
+# ====================================================================================
+
 
 # Original network
+@register_model("nn")
 class SpectrometerNet(nn.Module):
 
     def __init__(self, input_dim: int, output_dim: int):
@@ -20,6 +43,7 @@ class SpectrometerNet(nn.Module):
         return x
 
 # V1 CNN
+@register_model("cnn1")
 class SpectrometerCNN(nn.Module):
     def __init__(self, input_dim: int, output_dim: int):
         super().__init__()
@@ -53,6 +77,7 @@ class SpectrometerCNN(nn.Module):
         return x
 
 # Lower dim network, computes output as sum of evenly spaced gaussians
+@register_model("gcnn")
 class SpectrometerCNNGaussian(nn.Module):
     def __init__(self,
                  input_dim: int,
@@ -97,6 +122,7 @@ class SpectrometerCNNGaussian(nn.Module):
         return y
 
 # V2 CNN
+@register_model("cnn2")
 class CNN2(nn.Module):
     def __init__(self, input_dim=41, output_dim=1000):
         super().__init__()
