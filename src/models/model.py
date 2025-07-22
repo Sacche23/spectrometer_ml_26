@@ -9,6 +9,11 @@ import torch.nn.functional as F
 MODEL_REGISTRY = {}
 
 def register_model(name):
+    '''
+    Call "@register_model(name)" above
+    class declaration to register name as a valid
+    model parameter.
+    '''
     def decorator(cls):
         MODEL_REGISTRY[name] = cls
         return cls
@@ -23,7 +28,6 @@ def get_model(name):
 # ====================================================================================
 # Model Classes
 # ====================================================================================
-
 
 # Original network
 @register_model("nn")

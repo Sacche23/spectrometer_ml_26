@@ -69,4 +69,17 @@ then train the model on this dataset!
 ### Adding custom dataset:
 
 
+### Adding custom deep learning network architecture:
 
+1. **Implent your class in `model.py` under `Model Classes` section**
+2. **Follow below structure**
+```python
+@register_model("<model_name>")
+class <YourModel>(nn.Module):
+    def __init__(self, input_dim, output_dim):
+        super().__init__()
+        # TODO: Instantiate layers
+    def __init__(self, x: torch.Tensor) -> torch.Tensor:
+        # TODO: return model(x)
+        return x
+```
