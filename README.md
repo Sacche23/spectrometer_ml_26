@@ -42,7 +42,7 @@ bash scripts/csv_to_npy.sh \
 
 ### Adding custom randomly simulated spectra method:
 
-1. **Open `scripts/generate_random_spectra.py`**
+1. **Open `scripts/generate_spectra.py`**
 2. **Add your method name to `VALID_METHODS = {"rand_sop", "uniform", "<your_method>"}`**
 3. **Add your method to `generate_S`**
 ```python
@@ -63,11 +63,21 @@ class SumOfPeaksDataset(NPYCachedDataset):
         super().__init__(root, name="<your_method>", seed=seed, transform=transform)
 ```
 
-Now you can run `python3 scripts/generate_random_spectra.py` --method <your_method> and
+Now you can run `python3 scripts/generate_random_spectra.py --method <your_method>` and
 then train the model on this dataset!
 
 ### Adding custom dataset:
 
+1. **Follow steps 1-3 for adding randomly simulated spectra method**
+2. **Implement your function under `Custom Data Sampling Functions` section**
+3. **Add your method to list of real functions (path is generated w/o random seed)**
+```python
+if method in {"custom1", }: # Add every real dataset here
+    np.save(out_dir / f"S.npy", S)
+    np.save(out_dir / f"I.npy", I)
+```
+
+Similarly to above, simply run same script to produce training data.
 
 ### Adding custom deep learning network architecture:
 
@@ -83,3 +93,6 @@ class <YourModel>(nn.Module):
         # TODO: return model(x)
         return x
 ```
+
+Now you can pass in `<model_name>` as your model parameter in your training script
+to train your custom architecture.

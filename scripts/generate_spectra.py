@@ -3,13 +3,15 @@ import os
 from pathlib import Path
 import argparse
 
-VALID_METHODS = {"rand_sop", "uniform"}
+VALID_METHODS = {"rand_sop", "uniform", "custom1"}
 
 def generate_S(rng: np.random.Generator, n_samples: int, s_dim : int, method : str):
     if method == "uniform":
         return rng.uniform(size=(n_samples, s_dim)).astype(float)
     elif method == "rand_sop":
         return sum_of_peaks(rng, n_samples, s_dim)
+    elif method == "custom1":
+        return custom1(n_samples, s_dim)
     else:
         # should never hit this
         raise ValueError(f"Unknown method {method}")
@@ -61,6 +63,19 @@ def sum_of_peaks(
     return data
 
 # ====================================================================================
+# Custom Data Sampling Functions
+# ====================================================================================
+
+def custom1(
+    num_spectra: int,
+    num_points: int
+):
+    # TODO: Import dataset to work with, take a sample of num_spectra spectra, and then
+    # sample each of these at num_points points (may require linear interpolation), and
+    # finally return a numpy array of shape (num_spectra, num_points) of floats.
+    return np.zeros((num_spectra, num_points), dtype=float)
+
+# ====================================================================================
 # Main Script
 # ====================================================================================    
 
@@ -76,16 +91,17 @@ def main(seed: int,
     out_dir.mkdir(parents=True, exist_ok=True)
     rng = np.random.default_rng(seed)
 
-    if method == "uniform":
-        S = rng.uniform(size=(n_samples, s_dim)).astype(float)
-    elif method == "rand_sop":
-        S = sum_of_peaks(rng=rng, num_spectra=n_samples, num_points=s_dim)
+    S = generate_S(rng=rng, n_samples=n_samples, s_dim=s_dim, method=method)
 
     R = np.load("data/responsivity_data/processed/responsivity.npy")
     I = S @ R
 
-    np.save(out_dir / f"S_s{seed}.npy", S)
-    np.save(out_dir / f"I_s{seed}.npy", I)
+    if method in {"custom1", }: # Add every real dataset here
+        np.save(out_dir / f"S.npy", S)
+        np.save(out_dir / f"I.npy", I)
+    else:
+        np.save(out_dir / f"S_s{seed}.npy", S)
+        np.save(out_dir / f"I_s{seed}.npy", I)
     print(f"Wrote S.shape={S.shape}, I.shape={I.shape} to {out_dir!r}")
 
 if __name__=="__main__":
