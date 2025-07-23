@@ -2,7 +2,7 @@ import numpy as np
 from sklearn.linear_model import Lasso
 
 class LassoInverter:
-    def __init__(self, alpha: float=1.0, warm_start: bool=True, precompute: bool=True, max_iter: int=1000):
+    def __init__(self, alpha: float=1.0, warm_start: bool=True, precompute: bool=True, max_iter: int=10000):
         '''
         alpha: L1 penalty weight
         warm_start: reuse previous solution as init-point
