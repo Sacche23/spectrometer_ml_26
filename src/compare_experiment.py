@@ -30,6 +30,10 @@ def compute_r2(y_true: np.ndarray, y_pred: np.ndarray) -> np.ndarray:
     ss_tot = np.sum((y_true - mean_true) ** 2, axis=1)
     return 1 - ss_res / ss_tot
 
+def MSE(S, S_gt, low_idx, high_idx):
+    diff_squared = [(S[i] - S_gt[i])**2 for i in range(low_idx, high_idx)]
+    print(f"DIFF: length={len(diff_squared)}")
+    return np.mean(diff_squared)
 
 def test():
     
@@ -128,7 +132,7 @@ def main():
              torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Using device:", device)
 
-    # DATASET AND DATALOADER
+    # DATASETS
     DS = get_dataset(args.dataset)
     full_ds = DS(root=args.root)
     total = len(full_ds)
@@ -140,14 +144,34 @@ def main():
     )
     train_eval = Subset(train_ds, range(args.train_subset_size)) if args.train_subset_size > 0 else train_ds
 
-    
+    # Discrete to Continuous
 
-    print(len(train_eval))
-    count = 0
-    for x, y in train_eval:
-        print(f"x: {x[0]}, y:{y[0]}")
-        count += 1
-    print(count)
+    num_cont_bins = 10000
+    x_low, x_high = 1e-6, 9.5e-6
+    x_meas_low, x_meas_high = 2e-6, 9e-6
+    cont_vals = np.linspace(x_low, x_high, num_cont_bins)
+    range = x_high - x_low
+    low_idx = int(((x_meas_low - x_low) / range)*num_cont_bins) + 1 #inclusive
+    high_idx = int(((x_meas_high - x_low) / range)*num_cont_bins) #exclusive
+    print(high_idx, low_idx)
+
+
+    wl = np.linspace(1e-6, 9.5e-6, 1000)
+
+    x, y  = val_ds[0]
+    x_np, y_np = x.numpy(), y.numpy()
+    y_g = gaussian_smooth(wl, y_np, cont_vals)
+
+    # print(y_np)
+
+    print(MSE(y_g, y_g+0.01, low_idx, high_idx))
+
+    # print(len(train_eval))
+    # count = 0
+    # for x, y in train_eval:
+    #     print(f"x: {x[0]}, y:{y[0]}")
+    #     count += 1
+    # print(count)
     
 
 
