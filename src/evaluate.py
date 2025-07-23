@@ -8,7 +8,6 @@ from datasets.registry import get_dataset
 from models.model import get_model
 
 def r2_batch(y_pred: torch.Tensor, y_true: torch.Tensor) -> float:
-    """Scalar R² over the whole batch."""
     y_pred_flat = y_pred.view(-1)
     y_true_flat = y_true.view(-1)
     ss_res = torch.sum((y_true_flat - y_pred_flat) ** 2)
@@ -16,11 +15,10 @@ def r2_batch(y_pred: torch.Tensor, y_true: torch.Tensor) -> float:
     return (1 - ss_res / ss_tot).item()
 
 def evaluate_split(model, loader, criterion, device):
-    """Returns (mse, r2) for one DataLoader."""
     model.eval()
     total_mse = 0.0
-    total_r2  = 0.0
-    n         = 0
+    total_r2 = 0.0
+    n = 0
     with torch.no_grad():
         for x, y in loader:
             x = x.to(device).float()
@@ -34,15 +32,15 @@ def evaluate_split(model, loader, criterion, device):
 
 def main():
     p = argparse.ArgumentParser(description="Evaluate a checkpoint on train/val splits")
-    p.add_argument("--dataset",   "-d", required=True, help="Registered dataset name")
-    p.add_argument("--model",     "-m", required=True, help="Registered model name")
+    p.add_argument("--dataset", "-d", required=True, help="Registered dataset name")
+    p.add_argument("--model", "-m", required=True, help="Registered model name")
     p.add_argument("--checkpoint","-c", required=True, help="Path to .pth or checkpoint file")
-    p.add_argument("--root",      type=str, default="data/spectra_data/", help="Data root")
-    p.add_argument("--seed",      type=int, default=42, help="Split RNG seed")
-    p.add_argument("--val-size",  type=int, default=200, help="Number of val samples")
-    p.add_argument("--batch-size",type=int, default=64, help="Batch size for eval")
-    p.add_argument("--num-workers",type=int,default=0, help="DataLoader workers")
-    p.add_argument("--device",    type=str, default=None, help="cuda or cpu")
+    p.add_argument("--root", type=str, default="data/spectra_data/", help="Data root")
+    p.add_argument("--seed", type=int, default=42, help="Split RNG seed")
+    p.add_argument("--val-size", type=int, default=200, help="Number of val samples")
+    p.add_argument("--batch-size", type=int, default=64, help="Batch size for eval")
+    p.add_argument("--num-workers", type=int,default=0, help="DataLoader workers")
+    p.add_argument("--device", type=str, default=None, help="cuda or cpu")
     args = p.parse_args()
 
     # DEVICE SETUP
@@ -60,10 +58,10 @@ def main():
         [train_n, args.val_size],
         generator=torch.Generator().manual_seed(args.seed)
     )
-    train_loader = DataLoader(train_ds, batch_size=args.batch_size,
+    train_loader = DataLoader(train_ds, batch_size=len(train_ds),
                               shuffle=False, num_workers=args.num_workers,
                               pin_memory=(device.type=="cuda"))
-    val_loader   = DataLoader(val_ds,   batch_size=args.batch_size,
+    val_loader   = DataLoader(val_ds,   batch_size=len(val_ds),
                               shuffle=False, num_workers=args.num_workers,
                               pin_memory=(device.type=="cuda"))
 
