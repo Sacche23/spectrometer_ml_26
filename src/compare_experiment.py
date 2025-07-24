@@ -49,7 +49,7 @@ def main():
     p.add_argument("--alpha-tikh", type=float, default=0.1)
     p.add_argument("--alpha-lasso", type=float, default=0.1)
     p.add_argument("--downsample-factors", type=int, nargs='+', default=[1])
-    p.add_argument("--out-dir", type=str, default="./poop")
+    p.add_argument("--out-dir", type=str, default="./results/experiment_1")
     p.add_argument("--normalize", type=bool, default=True)
     args = p.parse_args()
 
@@ -204,7 +204,12 @@ def main():
         print(f"Avg runtime per sample (s) → Model: {avg_time_mod:.4f}, Tikhonov: {avg_time_tik:.4f}, Lasso: {avg_time_las:.4f}\n")
 
     #TODO: write summary, add in range of alpha values!
-
+    print("=== FINAL SUMMARY ===")
+    print(f"Tikhonov: alpha = {alpha_tikh}, Lasso: alpha = {alpha_lasso}")
+    print(f"Model: {args.model}, Dataset: {args.dataset}")
+    print(f"Data normalized: {args.normalize}")
+    print(f"Validation size: {args.val_size}, seed: {args.seed}")
+    print(f"Plots saved to {args.out_dir}")
     
 if __name__ == "__main__":
     main()

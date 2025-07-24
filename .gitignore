@@ -17,6 +17,7 @@ experiments/**/checkpoints/
 # Data folders
 data/responsivity_data
 data/spectra_data
+results
 
 # IDE settings
 .vscode/
