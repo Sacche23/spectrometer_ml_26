@@ -51,8 +51,10 @@ specified dataset.
 3. **Train model**
 ```bash
 bash scripts/train.sh
+tensorboard --logdir experiments
 ```
-Again, you may change the hyperparameters in train.sh
+Again, you may change the hyperparameters in train.sh. This will also
+launch tensorboard session to view model output throughout training.
 
 4. **Evaluate model**
 ```bash
