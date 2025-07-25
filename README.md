@@ -10,7 +10,7 @@ Training repository for CNN used for spectrometer inference for [wavelength-scal
 ## Installation
 1. Clone the repo
 ```bash
-git clone https://github.com/lwylonis/spectrometer_ml.git
+git clone git@github.com:lwylonis/spectrometer_ml.git 
 cd spectrometer_ml
 ```
 2. Create a virtual-env and activate
