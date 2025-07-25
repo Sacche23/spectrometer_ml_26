@@ -15,7 +15,7 @@ experiments/**/logs/
 experiments/**/checkpoints/
 
 # Data folders
-data/responsivity_data
+data/responsivity_data/processed
 data/spectra_data
 results
 
