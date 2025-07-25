@@ -29,7 +29,7 @@ pip install jupyterlab
 
 ## Usage
 
-1. Process responsivity data
+1. **Process responsivity data**
 ```bash
 bash scripts/csv_to_npy.sh \
     data/responsivity_data/raw/PhotoResponseSheet1.csv \
@@ -37,6 +37,37 @@ bash scripts/csv_to_npy.sh \
     data/responsivity_data/processed/wavelengths.npy \
     data/responsivity_data/processed/responsivity.npy
 ```
+Outputs .npy array for responsivity matrix, as well as wavelength and
+displacement values.
+
+2. **Generate spectra**
+```bash
+bash scripts/generate_spectra.sh
+```
+NOTE: edit generate_spectra.sh to contain choice of dataset, seed, sample size, etc.
+Will either generate random spectra + outputs as .npy files, or pull data from
+specified dataset.
+
+3. **Train model**
+```bash
+bash scripts/train.sh
+```
+Again, you may change the hyperparameters in train.sh
+4. **Evaluate model**
+```bash
+bash scripts/evaluate.sh
+```
+NOTE: You MUST keep same parameters for seed and validation size as training, otherwise
+the validation split will be different from training.
+
+5. **Compare model to Lasso and Tikhonov regularized regression**
+```bash
+bash scripts/compare_experiment
+```
+For this, also keep same parameters for seed and validation size as training! Additionally,
+make sure to change alpha parameter to optimize Lasso/Tikhonov for your dataset. This will
+print a summary of the mean squared error of the different models vs input over validation
+dataset, as well as plotting images of the predicted spectra vs. ground truth.
 
 ## Customization
 

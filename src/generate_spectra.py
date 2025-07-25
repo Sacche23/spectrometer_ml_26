@@ -112,6 +112,6 @@ if __name__=="__main__":
                    help="length of each 'true' spectrum")
     p.add_argument("--method",     type=str,   required=True,
                    choices=sorted(VALID_METHODS),
-                   help="random generation method")
+                   help="generation method")
     args = p.parse_args()
     main(args.seed, args.n_samples, args.s_dim, args.method)
