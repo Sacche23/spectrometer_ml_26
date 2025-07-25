@@ -53,6 +53,7 @@ specified dataset.
 bash scripts/train.sh
 ```
 Again, you may change the hyperparameters in train.sh
+
 4. **Evaluate model**
 ```bash
 bash scripts/evaluate.sh
