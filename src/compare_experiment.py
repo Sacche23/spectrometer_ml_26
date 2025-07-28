@@ -44,7 +44,7 @@ def main():
     p.add_argument("--checkpoint", "-c", required=True)
     p.add_argument("--root", type=str, default="data/spectra_data/")
     p.add_argument("--seed", type=int, default=42)
-    p.add_argument("--val-size", type=int, default=10)
+    p.add_argument("--val-size", type=int, default=200)
     p.add_argument("--device", type=str, default=None)
     p.add_argument("--alpha-tikh", type=float, default=0.1)
     p.add_argument("--alpha-lasso", type=float, default=0.1)

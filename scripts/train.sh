@@ -3,12 +3,12 @@ python3 src/train.py \
 	--model cnn2 \
 	--seed 42 \
 	--batch-size 128 \
-	--num-epochs 50 \
+	--num-epochs 1000 \
 	--learning-rate 1e-3 \
 	--learning-rate-decay 0.6 \
-	--learning-rate-period 20 \
+	--learning-rate-period 200 \
 	--gaussian-noise True \
 	--gaussian-noise-std 1e-4 \
 	--validation-size 200 \
-	--num-workers 4 \
-	--device cpu
+	--num-workers 0 \
+	--device cuda
