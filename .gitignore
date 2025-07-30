@@ -6,6 +6,9 @@ __pycache__/
 .venv/
 venv/
 
+# Bin files
+*.bin
+
 # Jupyter
 .ipynb_checkpoints/
 
