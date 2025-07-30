@@ -1,5 +1,6 @@
 import os, sys
 import argparse
+import matplotlib.pyplot as plt
 
 sys.path.insert(
     0,
@@ -58,6 +59,15 @@ def main():
 
     print(f"Wrote {in_path} ({x.size} floats)")
     print(f"Wrote {out_path} ({out.size} floats)")
+
+    # Plot the output
+    plt.figure()
+    plt.plot(out)
+    plt.title(f"Model output for sample {args.index}")
+    plt.xlabel("Output Index")
+    plt.ylabel("Value")
+    plt.grid(True)
+    plt.show()
 
 if __name__ == "__main__":
     main()
