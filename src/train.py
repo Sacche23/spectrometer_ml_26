@@ -33,7 +33,8 @@ def train(
         model_type: str,
         
         num_workers: int=0,
-        device: torch.device=None):
+        device: torch.device=None,
+        resume: str=None):
     
     # TRANSFORMATIONS
 
@@ -75,6 +76,23 @@ def train(
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
     scheduler = StepLR(optimizer, step_size=learning_rate_period, gamma=learning_rate_decay) # multiply lr * gamma every N steps
 
+    # LOAD PREVIOUS STATE
+
+    start_epoch = 1
+
+    if resume is not None:
+        checkpoint = torch.load(resume, map_location=device)
+        # if saved a dict of all states:
+        if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint: # Will never run as is, must change save.
+            model.load_state_dict(checkpoint['model_state_dict'])
+            optimizer.load_state_dict(checkpoint.get('optimizer_state_dict', optimizer.state_dict()))
+            scheduler.load_state_dict(checkpoint.get('scheduler_state_dict', scheduler.state_dict()))
+            start_epoch = checkpoint.get('epoch', 0) + 1
+        else:
+            # only saved model.state_dict()- expected case
+            model.load_state_dict(checkpoint)
+        print(f"Resumed from {resume!r}, starting at epoch {start_epoch}")
+
     # LOG AND CHECKPOINT SETUP
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -94,7 +112,7 @@ def train(
 
     # TRAINING LOOP
 
-    for epoch in range(1, num_epochs + 1):
+    for epoch in range(start_epoch, num_epochs + 1):
         model.train()
         running_loss = 0.0
 
@@ -156,7 +174,7 @@ def train(
             plt.close(fig)
 
             print(f"Epoch {epoch:3d}: train={train_loss:.4f}, val={val_loss:.4f}")
-            torch.save(model.state_dict(), ckpt_dir / f"epoch{epoch:03d}.pth")
+            torch.save(model.state_dict(), ckpt_dir / f"epoch{epoch:03d}.pth") # Can change to include optimizer, scheduler, epoch
 
 if __name__=="__main__":
 
@@ -181,6 +199,8 @@ if __name__=="__main__":
     parser.add_argument('--num-workers', type=int, required=False, default=0, help='Number of workers')
     parser.add_argument('--device', type=str, required=False, default=None, help='device (cpu, cuda)')
 
+    parser.add_argument('--resume', type=str, default=None, help='Path to a .pth checkpoint to resume training from')
+
     args = parser.parse_args()
 
 
@@ -196,4 +216,5 @@ if __name__=="__main__":
           validation_size=args.validation_size,
           model_type=args.model,
           num_workers=args.num_workers,
-          device=torch.device(args.device) if args.device else None)
+          device=torch.device(args.device) if args.device else None,
+          resume=args.resume)
