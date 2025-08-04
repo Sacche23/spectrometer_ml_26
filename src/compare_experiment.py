@@ -46,11 +46,26 @@ def main():
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--val-size", type=int, default=200)
     p.add_argument("--device", type=str, default=None)
-    p.add_argument("--alpha-tikh", type=float, default=0.1)
-    p.add_argument("--alpha-lasso", type=float, default=0.1)
+    # p.add_argument("--alpha-tikh", type=float, default=0.1)
+    # p.add_argument("--alpha-lasso", type=float, default=0.1)
+    p.add_argument(
+        "--alpha-tikh",
+        type=float,
+        nargs="+",
+        default=[0.1],
+        help="One or more alphas for Tikhonov (must match # of downsample factors or be a single value to broadcast)"
+    )
+    p.add_argument(
+        "--alpha-lasso",
+        type=float,
+        nargs="+",
+        default=[0.1],
+        help="One or more alphas for Lasso (must match # of downsample factors or be a single value to broadcast)"
+    )
     p.add_argument("--downsample-factors", type=int, nargs='+', default=[1])
     p.add_argument("--out-dir", type=str, default="./results/experiment_1")
     p.add_argument("--normalize", type=bool, default=True)
+    p.add_argument("--no-plot", action="store_true", help="Disable plotting")
     args = p.parse_args()
 
     # Device setup
@@ -94,11 +109,23 @@ def main():
     wl_full = np.linspace(1e-6, 9.5e-6, 1000)
     downsample_arr = args.downsample_factors
 
+    def expand_list(vals, name):
+        if len(vals) == 1:
+            return vals * len(downsample_arr)
+        if len(vals) == len(downsample_arr):
+            return vals
+        raise ValueError(f"{name} length must be 1 or match --downsample-factors length")
+
+    alpha_tikh_list  = expand_list(args.alpha_tikh,  "alpha-tikh")
+    alpha_lasso_list = expand_list(args.alpha_lasso, "alpha-lasso")
+
     R = np.load("data/responsivity_data/processed/responsivity.npy")
     R = R.T
 
-    for downsample in downsample_arr:
-        
+    for idx, downsample in enumerate(downsample_arr):
+
+        alpha_tikh = alpha_tikh_list[idx]
+        alpha_lasso = alpha_lasso_list[idx]
         wl_new = wl_full[::downsample]
         R_new = R[:, ::downsample]
 
@@ -109,9 +136,11 @@ def main():
         out_dir_ds = Path(args.out_dir) / f"downsample_{downsample}"
         out_dir_ds.mkdir(parents=True, exist_ok=True)
 
-        # --- time the three reconstructions over the whole val set ---
+        # time the three reconstructions over the whole val set
         x_all = torch.from_numpy(I_val).float().to(device)
         model.eval()
+
+        print(f"\n--- Resolution x{downsample} → alpha_tikh={alpha_tikh}, alpha_lasso={alpha_lasso} ---")
 
         t0 = time.time()
         with torch.no_grad():
@@ -152,17 +181,18 @@ def main():
                 y_gt_g /= np.mean(y_gt_g)
 
             # Plot and save
-            fig, ax = plt.subplots()
-            ax.plot(cont_vals, y_gt_g, label="Ground Truth")
-            ax.plot(cont_vals, y_t_g, label="Tikhonov")
-            ax.plot(cont_vals, y_l_g, label="Lasso")
-            ax.plot(cont_vals, y_m_g, label="Model")
-            ax.set_title(f"Sample {i} — downsample ×{downsample}")
-            ax.set_xlabel("Wavelength (m)")
-            ax.set_ylabel("Normalized Gaussian-smoothed response")
-            ax.legend()
-            fig.savefig(out_dir_ds / f"sample_{i}.png")
-            plt.close(fig)
+            if not args.no_plot:
+                fig, ax = plt.subplots()
+                ax.plot(cont_vals, y_gt_g, label="Ground Truth")
+                ax.plot(cont_vals, y_t_g, label="Tikhonov")
+                ax.plot(cont_vals, y_l_g, label="Lasso")
+                ax.plot(cont_vals, y_m_g, label="Model")
+                ax.set_title(f"Sample {i} — downsample ×{downsample}")
+                ax.set_xlabel("Wavelength (m)")
+                ax.set_ylabel("Normalized Gaussian-smoothed response")
+                ax.legend()
+                fig.savefig(out_dir_ds / f"sample_{i}.png")
+                plt.close(fig)
 
             # Compute MSE
             mse_m = MSE(y_gt_g, y_m_g, low_idx, high_idx)
@@ -203,13 +233,15 @@ def main():
         print(f"    R² → Model: {r2_m:.4f},   Tikhonov: {r2_t:.4f},   Lasso: {r2_l:.4f}")
         print(f"Avg runtime per sample (s) → Model: {avg_time_mod:.4f}, Tikhonov: {avg_time_tik:.4f}, Lasso: {avg_time_las:.4f}\n")
 
-    #TODO: write summary, add in range of alpha values!
     print("=== FINAL SUMMARY ===")
     print(f"Tikhonov: alpha = {alpha_tikh}, Lasso: alpha = {alpha_lasso}")
     print(f"Model: {args.model}, Dataset: {args.dataset}")
     print(f"Data normalized: {args.normalize}")
     print(f"Validation size: {args.val_size}, seed: {args.seed}")
-    print(f"Plots saved to {args.out_dir}")
+    if args.no_plot:
+        print("Plotting was disabled (--no-plot)")
+    else:
+        print(f"Plots saved to {args.out_dir}")
     
 if __name__ == "__main__":
     main()
