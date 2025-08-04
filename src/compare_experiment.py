@@ -46,22 +46,10 @@ def main():
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--val-size", type=int, default=200)
     p.add_argument("--device", type=str, default=None)
-    # p.add_argument("--alpha-tikh", type=float, default=0.1)
-    # p.add_argument("--alpha-lasso", type=float, default=0.1)
-    p.add_argument(
-        "--alpha-tikh",
-        type=float,
-        nargs="+",
-        default=[0.1],
-        help="One or more alphas for Tikhonov (must match # of downsample factors or be a single value to broadcast)"
-    )
-    p.add_argument(
-        "--alpha-lasso",
-        type=float,
-        nargs="+",
-        default=[0.1],
-        help="One or more alphas for Lasso (must match # of downsample factors or be a single value to broadcast)"
-    )
+    p.add_argument("--alpha-tikh", type=float, nargs="+", default=[0.1],
+        help="One or more alphas for Tikhonov (must match # of downsample factors or be a single value to broadcast)")
+    p.add_argument("--alpha-lasso", type=float, nargs="+", default=[0.1], 
+        help="One or more alphas for Lasso (must match # of downsample factors or be a single value to broadcast)")
     p.add_argument("--downsample-factors", type=int, nargs='+', default=[1])
     p.add_argument("--out-dir", type=str, default="./results/experiment_1")
     p.add_argument("--normalize", type=bool, default=True)
@@ -187,7 +175,7 @@ def main():
                 ax.plot(cont_vals, y_t_g, label="Tikhonov")
                 ax.plot(cont_vals, y_l_g, label="Lasso")
                 ax.plot(cont_vals, y_m_g, label="Model")
-                ax.set_title(f"Sample {i} — downsample ×{downsample}")
+                ax.set_title(f"Sample {i} — downsample x{downsample}")
                 ax.set_xlabel("Wavelength (m)")
                 ax.set_ylabel("Normalized Gaussian-smoothed response")
                 ax.legend()
