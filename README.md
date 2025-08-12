@@ -3,9 +3,50 @@ Training repository for CNN used for spectrometer inference for [wavelength-scal
 
 ## Theory
 
+The wavelength-scale black phosphorus spectrometer operates by measuring a series of photocurrents \(I(D_i)\) at different applied electric displacements \(D_i\). The intrinsic responsivity of the device \(R(D_i, \lambda)\) varies strongly with \(D\) due to the Stark effect — bias-dependent tuning of the bandgap — allowing different wavelengths to be encoded in the photocurrent response.  
+
+The measured photocurrent is modeled as:
+
+\[
+I(D_i) = \int_{\lambda_{\text{low}}}^{\lambda_{\text{high}}} R(D_i, \lambda) \, P(\lambda) \, d\lambda
+\]
+
+where:
+- \(P(\lambda)\) is the unknown incident spectrum  
+- \(R(D_i, \lambda)\) is the responsivity at displacement \(D_i\)  
+- \(I(D_i)\) is the measured photocurrent  
+
+To make this problem numerically tractable, the wavelength range is discretized and \(P(\lambda)\) is approximated as a sum of Gaussian basis functions. This yields a matrix equation:
+
+\[
+R \cdot P = I
+\]
+
+Here:
+- \(R\) is the responsivity matrix  
+- \(P\) is the discretized spectrum vector  
+- \(I\) is the photocurrent vector  
+
+Since \(R\) is highly ill-conditioned (its rows are nearly colinear), naïve inversion amplifies noise. The original work by Yuan et al. used **Tikhonov** and **Lasso** regularized regression to recover \(P\). These methods can approximate arbitrary spectra but suffer from:
+- **Discretization error** (especially at low resolution)  
+- **\(\mathcal{O}(n^3)\) runtime**, making high-resolution real-time inference impractical  
+- Possible **negative outputs**, which have no physical meaning for spectra  
+
+### CNN-Based Inference
+Instead of solving the ill-conditioned inverse problem directly, we use a **1D convolutional neural network (CNN)** trained end-to-end to map \(I\) directly to \(P\).  
+
+Advantages:
+1. Learns **nonlinear mappings** between photocurrent features and spectral features  
+2. Enforces **spectral priors** like non-negativity and realistic shape  
+3. Has **sub-\(n^2\) complexity** for \(n=1000\), enabling **real-time inference**  
+4. Is a **feed-forward** model, unlike iterative regression methods  
+
+The trained CNN is then deployed on an FPGA for hardware-accelerated inference, making on-chip, real-time spectrum reconstruction feasible.
 
 
 ## Network Architecture
+
+![CNN Architecture Diagram](./Architecture_Diagram.png)
 
 ## Installation
 1. Clone the repo
