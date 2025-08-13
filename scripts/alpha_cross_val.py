@@ -5,21 +5,32 @@ from sklearn.model_selection import KFold
 from sklearn.metrics import mean_squared_error
 from src.models.lasso import LassoInverter
 from src.models.tikhonov import TikhonovInverter
+import matplotlib.pyplot as plt
+import os
+
+def rms_normalize(arr):
+    """Normalize each row by its RMS value."""
+    norm = np.sqrt(np.mean(arr**2, axis=1, keepdims=True))
+    norm[norm == 0] = 1.0  # avoid div by zero
+    return arr / norm
 
 def main():
     p = argparse.ArgumentParser(description="Cross-validate alpha for Lasso and Tikhonov over multiple spectra.")
-    p.add_argument("--resp", default="data/responsivity_data/processed/responsivity.npy",
-                   help="Path to responsivity.npy (shape: m x n)")
-    p.add_argument("--currents", default="data/spectra_data/processed/rand_sop/I_s42.npy",
-                   help="Path to I.npy (shape: Nspec x m)")
-    p.add_argument("--spectra", default="data/spectra_data/processed/rand_sop/S_s42.npy",
-                   help="Path to S.npy (shape: Nspec x n) [optional for evaluation]")
-    p.add_argument("--alphas", type=str, default="1e-6,1e-5,1e-4,1e-3,1e-2,1e-1,1")
-    p.add_argument("--folds", type=int, default=5, help="Number of folds")
-    p.add_argument("--downsample", type=int, default=1,
-                   help="Keep every Nth wavelength. 1 = full res, 2 = half res, etc.")
-    p.add_argument("--subset", type=int, default=20,
-                   help="Randomly choose this many spectra from the dataset. 0 = use all.")
+    p.add_argument("--resp", default="data/responsivity_data/processed/responsivity.npy")
+    p.add_argument("--currents", default="data/spectra_data/processed/rand_sop/I_s42.npy")
+    p.add_argument("--spectra", default="data/spectra_data/processed/rand_sop/S_s42.npy")
+    p.add_argument("--alphas", type=str, default="1e-8,1e-7,1e-6,1e-5,1e-4,1e-3,1e-2,1e-1,1")
+    p.add_argument("--folds", type=int, default=5)
+    p.add_argument("--downsample", type=int, default=1, help="Keep every Nth wavelength; scales R by N to preserve current scale.")
+    p.add_argument("--subset", type=int, default=20)
+    p.add_argument("--metric", choices=["spectra", "currents"], default=None,
+                   help="Which space to compute MSE in. Default: spectra if S.npy exists, else currents.")
+    p.add_argument("--plot", action="store_true", help="Plot predicted spectra for each alpha (test set).")
+    p.add_argument("--noise-std", type=float, default=0.0,
+                   help="Std. dev. of Gaussian noise to add to currents in CV (0.0 = no noise).")
+    # Default ON normalization (as requested). If you ever want an off switch, we can add a --no-normalize flag.
+    p.add_argument("--normalize", action="store_true", default=True,
+                   help="Normalize spectra before MSE scoring (RMS normalization).")
     args = p.parse_args()
 
     alphas = [float(x) for x in args.alphas.split(",")]
@@ -32,39 +43,55 @@ def main():
     except Exception:
         S_all = None
 
-    # Orientation fix: ensure R rows == I.shape[1] (m)
+    # Pick metric default
+    if args.metric is None:
+        args.metric = "spectra" if S_all is not None else "currents"
+    print(f"Scoring metric: {args.metric}")
+
+    # Orientation fix so that R rows == I.shape[1] (m)
     if R.shape[0] != I.shape[1]:
         if R.shape[1] == I.shape[1]:
             R = R.T
         else:
             raise ValueError(f"Incompatible shapes: R {R.shape}, I {I.shape}")
 
-    # Downsample wavelength axis
+    # Downsample wavelength axis + SCALE R by ds to preserve current scale
     ds = max(1, int(args.downsample))
     if ds > 1:
-        R = R[:, ::ds]
+        R = R[:, ::ds] * ds
         if S_all is not None:
             S_all = S_all[:, ::ds]
+        print(f"Downsample factor {ds}: R columns sliced ::{ds} and R scaled by {ds} to keep I scale consistent.")
 
-    # Random subset selection
+    # Subset selection
     Nspec = I.shape[0]
+    np.random.seed(42)
     if args.subset > 0 and args.subset < Nspec:
-        idx = np.random.choice(Nspec, args.subset, replace=False, seed=42)
+        idx = np.random.choice(Nspec, args.subset, replace=False)
         I = I[idx]
         if S_all is not None:
             S_all = S_all[idx]
         Nspec = args.subset
         print(f"Using random subset of {Nspec} spectra")
 
-    print(f"R shape after downsample: {R.shape}, I shape: {I.shape}, spectra: {None if S_all is None else S_all.shape}")
-
+    # CV loop
     kf = KFold(n_splits=args.folds, shuffle=True, random_state=0)
-
     results = {}
+
     for method in ["lasso", "tikhonov"]:
+        print(f"\nAnalyzing {method}:")
         mse_scores = {a: [] for a in alphas}
-        for train_idx, test_idx in kf.split(range(Nspec)):
+
+        for fold, (train_idx, test_idx) in enumerate(kf.split(range(Nspec)), start=1):
             I_train, I_test = I[train_idx], I[test_idx]
+            S_train = S_all[train_idx] if S_all is not None else None
+            S_test = S_all[test_idx] if S_all is not None else None
+
+            # Add noise if requested (in current space). Scale is independent of downsample thanks to R scaling above.
+            if args.noise_std > 0:
+                I_train = I_train + np.random.normal(0, args.noise_std, I_train.shape)
+                I_test = I_test + np.random.normal(0, args.noise_std, I_test.shape)
+
             for alpha in alphas:
                 if method == "lasso":
                     solver = LassoInverter(alpha=alpha)
@@ -73,23 +100,48 @@ def main():
                     solver.set_matrix(R)
 
                 preds = []
-                for I_vec in I_test:
+                for i_vec in I_test:
                     if method == "lasso":
-                        S_hat = solver.solve(R, I_vec)
+                        S_hat = solver.solve(R, i_vec)
                     else:
-                        S_hat = solver.solve(I_vec)
+                        S_hat = solver.solve(i_vec)
                     preds.append(S_hat)
                 preds = np.array(preds)
 
-                # Compare in current space
-                I_pred = preds @ R.T
-                mse = mean_squared_error(I_test, I_pred)
+                # Optional normalization for spectra-space scoring
+                if args.metric == "spectra" and S_test is not None and args.normalize:
+                    preds_for_score = rms_normalize(preds)
+                    S_test_for_score = rms_normalize(S_test)
+                else:
+                    preds_for_score = preds
+                    S_test_for_score = S_test
+
+                # Plot spectra if requested
+                if args.plot and args.metric == "spectra" and S_test is not None:
+                    outdir = f"plots_{method}"
+                    os.makedirs(outdir, exist_ok=True)
+                    for idx_plot in range(min(5, len(S_test))):  # plot up to 5 examples
+                        plt.figure()
+                        plt.plot(S_test_for_score[idx_plot], label="True")
+                        plt.plot(preds_for_score[idx_plot], label=f"Pred α={alpha}")
+                        plt.legend()
+                        plt.savefig(f"{outdir}/fold{fold}_ex{idx_plot}_alpha{alpha}.png")
+                        plt.close()
+
+                # Scoring
+                if args.metric == "spectra" and S_test is not None:
+                    mse = mean_squared_error(S_test_for_score, preds_for_score)
+                else:
+                    # Compare in current space (predicted I = S_hat @ R^T)
+                    I_pred = preds @ R.T
+                    mse = mean_squared_error(I_test, I_pred)
                 mse_scores[alpha].append(mse)
 
         avg_mse = {a: float(np.mean(mse_scores[a])) for a in alphas}
         best_alpha = min(avg_mse, key=avg_mse.get)
         results[method] = (best_alpha, avg_mse)
 
+    # Print results
     for method in results:
         best_alpha, avg_mse = results[method]
         print(f"\n=== {method.upper()} ===")
