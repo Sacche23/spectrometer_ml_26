@@ -38,7 +38,7 @@ def main():
     p.add_argument("--root", type=str, default="data/spectra_data/", help="Data root")
     p.add_argument("--seed", type=int, default=42, help="Split RNG seed")
     p.add_argument("--val-size", type=int, default=200, help="Number of val samples")
-    p.add_argument("--batch-size", type=int, default=64, help="Batch size for eval")
+    p.add_argument("--batch-size", type=int, default=128, help="Batch size for eval")
     p.add_argument("--num-workers", type=int,default=0, help="DataLoader workers")
     p.add_argument("--device", type=str, default=None, help="cuda or cpu")
     args = p.parse_args()
