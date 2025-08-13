@@ -13,14 +13,19 @@ venv/
 .ipynb_checkpoints/
 
 # Logs & checkpoints
+logs/
 *.log
 experiments/**/logs/
 experiments/**/checkpoints/
+slurm*
 
 # Data folders
 data/responsivity_data/processed
 data/spectra_data
 results
+
+# Symbolic Links
+scripts/src
 
 # IDE settings
 .vscode/
