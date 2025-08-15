@@ -1,17 +1,8 @@
 import os, sys
 import argparse
 import matplotlib.pyplot as plt
-
-sys.path.insert(
-    0,
-    os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-)
-
-
 import numpy as np
 import torch
-
-# adjust this import if your project layout differs
 from src.models.model import get_model  
 
 def main():
