@@ -24,6 +24,9 @@ data/responsivity_data/processed
 data/spectra_data
 results
 
+# Plots
+/plots_*/
+
 # Symbolic Links
 scripts/src
 
