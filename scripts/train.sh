@@ -1,3 +1,16 @@
+#!/bin/bash
+
+#SBATCH --job-name=my_ml_train
+#SBATCH --output=logs/%j.out
+#SBATCH --error=logs/%j.err
+#SBATCH --partition=gpu
+#SBATCH --gres=gpu:1            # Number of GPUs
+#SBATCH --cpus-per-task=8       # Number of CPU cores
+#SBATCH --mem=32G               # RAM
+#SBATCH --time=02:00:00         # HH:MM:SS
+#SBATCH --mail-type=END,FAIL
+#SBATCH --mail-user=leo.wylonis@yale.edu
+
 python3 src/train.py \
 	--dataset rand_sop \
 	--model cnn2 \
