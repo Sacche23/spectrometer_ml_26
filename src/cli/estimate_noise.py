@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import numpy as np
 import argparse
 
@@ -42,7 +41,7 @@ def main():
     rms_current_sim = np.sqrt(np.mean(I**2, axis=1))  # In simulation units
 
     # Step 2: Estimate scaling factor for realistic currents
-    # Let's assume BP detector responsivity ~ 1 A/W in mid-IR as baseline
+    # Assume BP detector responsivity ~ 1 A/W in mid-IR as baseline
     # and that incident power is ~ 1 µW (typical for lab mid-IR setups)
     target_rms_current_phys = 1e-6  # 1 µA RMS
     median_rms_current_sim = np.median(rms_current_sim)
