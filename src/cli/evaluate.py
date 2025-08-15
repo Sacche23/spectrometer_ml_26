@@ -2,10 +2,9 @@
 import argparse
 import torch
 import torch.nn as nn
-import numpy as np
 from torch.utils.data import DataLoader
-from datasets.registry import get_dataset
-from models.model import get_model
+from src.datasets.registry import get_dataset
+from src.models.model import get_model
 
 def r2_batch(y_pred: torch.Tensor, y_true: torch.Tensor) -> float:
     y_pred_flat = y_pred.view(-1)

@@ -9,8 +9,9 @@
 #SBATCH --error=logs/%j.err
 
 
-python3 src/evaluate.py \
+python3 -m src.cli.evaluate \
     --dataset rand_sop \
     --model cnn2 \
     --checkpoint experiments/run_20250812_160809_rand_sop/checkpoints/epoch1000.pth \
-    --batch-size 128
+    --batch-size 128 \
+    "$@"
