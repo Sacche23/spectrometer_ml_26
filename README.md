@@ -46,7 +46,7 @@ The trained CNN is then deployed on an FPGA for hardware-accelerated inference, 
 
 ## Network Architecture
 
-![CNN Architecture Diagram](./Architecture_Diagram.png)
+![CNN Architecture Diagram](./docs/Architecture_Diagram.png)
 
 ## Installation
 1. Clone the repo
