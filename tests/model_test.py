@@ -3,6 +3,7 @@
 import numpy as np
 import torch
 from datasets.registry import get_dataset
+import matplotlib.pyplot as plt
 
 def main():
     # -- Load full responsivity matrix
@@ -16,6 +17,9 @@ def main():
 
     # -- Get first sample: (measurement, spectrum)
     meas_tensor, spec_tensor = ds[0]
+    plt.plot(spec_tensor)
+    plt.show()
+
     # Convert spectrum to NumPy
     spec_np = spec_tensor.detach().cpu().numpy() if torch.is_tensor(spec_tensor) else spec_tensor
     print(f"First spectrum shape: {spec_np.shape}")
@@ -25,6 +29,7 @@ def main():
     pred = R.T @ spec_np
     print(f"Predicted measurement shape: {pred.shape}")
     print("Predicted measurement:\n", pred)
+    print(meas_tensor)
 
 if __name__ == "__main__":
     main()
