@@ -1,14 +1,12 @@
-import os
 import argparse
 import torch
-import numpy as np
 from torch.utils.data import DataLoader
-from datasets.registry import get_dataset, DATASET_REGISTRY
+from src.datasets.registry import get_dataset, DATASET_REGISTRY
 import torch.nn as nn
 import torch.optim as optim
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.tensorboard import SummaryWriter
-from models.model import *
+from src.models.model import *
 from datetime import datetime
 from pathlib import Path
 import matplotlib.pyplot as plt

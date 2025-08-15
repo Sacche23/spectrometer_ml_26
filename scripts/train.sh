@@ -1,5 +1,4 @@
 #!/bin/bash
-
 #SBATCH --job-name=my_ml_train
 #SBATCH --output=logs/%j.out
 #SBATCH --error=logs/%j.err
@@ -11,7 +10,7 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --mail-user=leo.wylonis@yale.edu
 
-python3 src/train.py \
+python3 -m src.cli.train \
 	--dataset rand_sop \
 	--model cnn2 \
 	--seed 42 \
@@ -24,4 +23,5 @@ python3 src/train.py \
 	--gaussian-noise-std 1e-4 \
 	--validation-size 200 \
 	--num-workers 0 \
-	--device cuda
+	--device cpu \
+	"$@"
