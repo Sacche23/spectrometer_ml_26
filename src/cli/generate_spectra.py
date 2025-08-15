@@ -97,11 +97,11 @@ def main(seed: int,
     I = S @ R
 
     if method in {"custom1", }: # Add every real dataset here
-        np.save(out_dir / f"S.npy", S)
+        np.save(out_dir / f"S_{n_samples}x{s_dim}.npy", S)
         np.save(out_dir / f"I.npy", I)
     else:
-        np.save(out_dir / f"S_s{seed}.npy", S)
-        np.save(out_dir / f"I_s{seed}.npy", I)
+        np.save(out_dir / f"S_s{seed}_{n_samples}x{s_dim}.npy", S)
+        np.save(out_dir / f"I_s{seed}_{n_samples}x{s_dim}.npy", I)
     print(f"Wrote S.shape={S.shape}, I.shape={I.shape} to {out_dir!r}")
 
 if __name__=="__main__":
