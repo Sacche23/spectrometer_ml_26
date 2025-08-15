@@ -1,6 +1,8 @@
+#!/usr/bin/env python3
 import numpy as np
 import torch
 import argparse
+import random
 import torch.nn as nn
 from torch.utils.data import DataLoader, Subset
 from datasets.registry import get_dataset
@@ -37,7 +39,6 @@ def dataset_to_numpy(ds):
 def main():
 
     # Argument Settings
-
     p = argparse.ArgumentParser(description="Compare methods with gaussian-basis reconstruction at multiple resolutions")
     p.add_argument("--dataset", "-d", required=True)
     p.add_argument("--model", "-m", required=True)
@@ -54,6 +55,9 @@ def main():
     p.add_argument("--out-dir", type=str, default="./results/experiment_1")
     p.add_argument("--normalize", type=bool, default=True)
     p.add_argument("--no-plot", action="store_true", help="Disable plotting")
+    # NEW: add noise during evaluation (default 0.0 keeps prior behavior)
+    p.add_argument("--noise-std", type=float, default=0.0,
+                   help="Std dev of Gaussian noise added to evaluation currents (same for all methods). Default 0.0")
     args = p.parse_args()
 
     # Device setup
@@ -61,6 +65,12 @@ def main():
              torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Using device:", device)
     print("Retrieving dataset...")
+
+    # Repro
+    np.random.seed(args.seed)
+    random.seed(args.seed)
+    torch.manual_seed(args.seed)
+
     # Dataset
     DS = get_dataset(args.dataset)
     full_ds = DS(root=args.root)
@@ -80,7 +90,7 @@ def main():
     model = ModelClass(input_dim=len(x0), output_dim=len(y0)).to(device)
     state = torch.load(args.checkpoint, map_location=device)
     model.load_state_dict(state.get("model_state_dict", state))
-    
+
     # Discrete to Continuous
     num_cont_bins = 10000
     x_low, x_high = 1e-6, 9.5e-6
@@ -88,11 +98,7 @@ def main():
     cont_vals = np.linspace(x_low, x_high, num_cont_bins)
     rnge = x_high - x_low
     low_idx = int(((x_meas_low - x_low) / rnge)*num_cont_bins) + 1 #inclusive
-    high_idx = int(((x_meas_high - x_low) / rnge)*num_cont_bins) #exclusive
-
-
-    alpha_lasso = args.alpha_lasso
-    alpha_tikh = args.alpha_tikh
+    high_idx = int(((x_meas_high - x_low) / rnge)*num_cont_bins)    #exclusive
 
     wl_full = np.linspace(1e-6, 9.5e-6, 1000)
     downsample_arr = args.downsample_factors
@@ -107,15 +113,30 @@ def main():
     alpha_tikh_list  = expand_list(args.alpha_tikh,  "alpha-tikh")
     alpha_lasso_list = expand_list(args.alpha_lasso, "alpha-lasso")
 
+    # Load responsivity; orient to (m, n_lambda)
     R = np.load("data/responsivity_data/processed/responsivity.npy")
-    R = R.T
+    R = R.T  # now shape (m=41, n_lambda=1000)
+
+    # ---- NEW: build one noisy evaluation current set (shared across all methods/resolutions) ----
+    if args.noise_std < 0:
+        raise ValueError("--noise-std must be nonnegative")
+    if args.noise_std > 0:
+        noise = np.random.normal(0.0, args.noise_std, size=I_val.shape)
+        I_eval = I_val + noise
+        print(f"Added Gaussian noise to evaluation currents: σ = {args.noise_std} (dataset units)")
+    else:
+        I_eval = I_val
 
     for idx, downsample in enumerate(downsample_arr):
 
         alpha_tikh = alpha_tikh_list[idx]
         alpha_lasso = alpha_lasso_list[idx]
+
+        # Downsample wavelength axis
         wl_new = wl_full[::downsample]
-        R_new = R[:, ::downsample]
+
+        # ---- NEW: scale R by the downsample factor to preserve discretization magnitude ----
+        R_new = R[:, ::downsample] * downsample
 
         tik = TikhonovInverter(alpha=alpha_tikh); tik.set_matrix(R_new)
         las = LassoInverter(alpha=alpha_lasso)
@@ -125,7 +146,7 @@ def main():
         out_dir_ds.mkdir(parents=True, exist_ok=True)
 
         # time the three reconstructions over the whole val set
-        x_all = torch.from_numpy(I_val).float().to(device)
+        x_all = torch.from_numpy(I_eval).float().to(device)  # use *noisy* currents for the model too
         model.eval()
 
         print(f"\n--- Resolution x{downsample} → alpha_tikh={alpha_tikh}, alpha_lasso={alpha_lasso} ---")
@@ -138,14 +159,14 @@ def main():
 
         t0 = time.time()
         recon_tik_ds = np.stack(
-            [tik.solve(b) for b in tqdm.tqdm(I_val, desc="Tikhonov solve")],
+            [tik.solve(b) for b in tqdm.tqdm(I_eval, desc="Tikhonov solve")],
             axis=0
         )
         total_time_tik = time.time() - t0
 
         t0 = time.time()
         recon_las_ds = np.stack(
-            [las.solve(R_new, b) for b in tqdm.tqdm(I_val, desc="Lasso solve")],
+            [las.solve(R_new, b) for b in tqdm.tqdm(I_eval, desc="Lasso solve")],
             axis=0
         )
         total_time_las = time.time() - t0
@@ -154,13 +175,12 @@ def main():
         mse_m_total = mse_t_total = mse_l_total = 0.0
         sse_m = sse_t = sse_l = 0.0
         sst_total = 0.0
-        
 
         for i in range(len(S_val)):
             y_m_g = gaussian_smooth(wl_full, recon_mod_ds[i], cont_vals)
-            y_t_g = gaussian_smooth(wl_new, recon_tik_ds[i], cont_vals)
-            y_l_g = gaussian_smooth(wl_new, recon_las_ds[i], cont_vals)
-            y_gt_g = gaussian_smooth(wl_full, S_val[i], cont_vals)
+            y_t_g = gaussian_smooth(wl_new,  recon_tik_ds[i], cont_vals)
+            y_l_g = gaussian_smooth(wl_new,  recon_las_ds[i], cont_vals)
+            y_gt_g = gaussian_smooth(wl_full, S_val[i],       cont_vals)
 
             if args.normalize:
                 y_m_g /= np.mean(y_m_g)
@@ -172,9 +192,9 @@ def main():
             if not args.no_plot:
                 fig, ax = plt.subplots()
                 ax.plot(cont_vals, y_gt_g, label="Ground Truth")
-                ax.plot(cont_vals, y_t_g, label="Tikhonov")
-                ax.plot(cont_vals, y_l_g, label="Lasso")
-                ax.plot(cont_vals, y_m_g, label="Model")
+                ax.plot(cont_vals, y_t_g,  label="Tikhonov")
+                ax.plot(cont_vals, y_l_g,  label="Lasso")
+                ax.plot(cont_vals, y_m_g,  label="Model")
                 ax.set_title(f"Sample {i} — downsample x{downsample}")
                 ax.set_xlabel("Wavelength (m)")
                 ax.set_ylabel("Normalized Gaussian-smoothed response")
@@ -230,6 +250,10 @@ def main():
         print("Plotting was disabled (--no-plot)")
     else:
         print(f"Plots saved to {args.out_dir}")
-    
+    if args.noise_std > 0:
+        print(f"Evaluation used noisy currents with σ = {args.noise_std}")
+
 if __name__ == "__main__":
     main()
+
+
