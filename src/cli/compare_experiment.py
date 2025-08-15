@@ -1,14 +1,12 @@
-#!/usr/bin/env python3
 import numpy as np
 import torch
 import argparse
 import random
-import torch.nn as nn
-from torch.utils.data import DataLoader, Subset
-from datasets.registry import get_dataset
-from models.model import get_model
-from models.tikhonov import TikhonovInverter
-from models.lasso import LassoInverter
+from torch.utils.data import DataLoader
+from src.datasets import get_dataset
+from src.models.model import get_model
+from src.models.tikhonov import TikhonovInverter
+from src.models.lasso import LassoInverter
 import matplotlib.pyplot as plt
 from pathlib import Path
 import tqdm
@@ -55,7 +53,6 @@ def main():
     p.add_argument("--out-dir", type=str, default="./results/experiment_1")
     p.add_argument("--normalize", type=bool, default=True)
     p.add_argument("--no-plot", action="store_true", help="Disable plotting")
-    # NEW: add noise during evaluation (default 0.0 keeps prior behavior)
     p.add_argument("--noise-std", type=float, default=0.0,
                    help="Std dev of Gaussian noise added to evaluation currents (same for all methods). Default 0.0")
     args = p.parse_args()
@@ -66,7 +63,7 @@ def main():
     print("Using device:", device)
     print("Retrieving dataset...")
 
-    # Repro
+    # Reproducibility
     np.random.seed(args.seed)
     random.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -117,13 +114,13 @@ def main():
     R = np.load("data/responsivity_data/processed/responsivity.npy")
     R = R.T  # now shape (m=41, n_lambda=1000)
 
-    # ---- NEW: build one noisy evaluation current set (shared across all methods/resolutions) ----
+    # build one noisy evaluation current set (shared across all methods/resolutions)
     if args.noise_std < 0:
         raise ValueError("--noise-std must be nonnegative")
     if args.noise_std > 0:
         noise = np.random.normal(0.0, args.noise_std, size=I_val.shape)
         I_eval = I_val + noise
-        print(f"Added Gaussian noise to evaluation currents: σ = {args.noise_std} (dataset units)")
+        print(f"Added Gaussian noise to evaluation currents: std = {args.noise_std} (dataset units)")
     else:
         I_eval = I_val
 
@@ -135,7 +132,7 @@ def main():
         # Downsample wavelength axis
         wl_new = wl_full[::downsample]
 
-        # ---- NEW: scale R by the downsample factor to preserve discretization magnitude ----
+        # scale R by the downsample factor to preserve discretization magnitude
         R_new = R[:, ::downsample] * downsample
 
         tik = TikhonovInverter(alpha=alpha_tikh); tik.set_matrix(R_new)
@@ -146,7 +143,7 @@ def main():
         out_dir_ds.mkdir(parents=True, exist_ok=True)
 
         # time the three reconstructions over the whole val set
-        x_all = torch.from_numpy(I_eval).float().to(device)  # use *noisy* currents for the model too
+        x_all = torch.from_numpy(I_eval).float().to(device)  # use noisy currents for the model too
         model.eval()
 
         print(f"\n--- Resolution x{downsample} → alpha_tikh={alpha_tikh}, alpha_lasso={alpha_lasso} ---")
@@ -255,5 +252,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
