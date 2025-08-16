@@ -99,7 +99,7 @@ The second script will determine the alpha values to use for Tikhonov and Lasso 
 4. **Train model**
 ```bash
 bash scripts/train.sh
-tensorboard --logdir experiments
+tensorboard --port 3457 --logdir training_runs
 ```
 Again, you may change the hyperparameters in the shell script. This will also
 launch tensorboard session to view model output throughout training.
