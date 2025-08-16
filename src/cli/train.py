@@ -95,7 +95,7 @@ def train(
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     run_name = f"run_{ts}_{dataset_name}"
-    experiments_dir = Path("experiments") / run_name
+    experiments_dir = Path("training_runs") / run_name
 
     logs_dir = experiments_dir / "logs"
     ckpt_dir = experiments_dir / "checkpoints"

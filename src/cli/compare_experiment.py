@@ -50,7 +50,7 @@ def main():
     p.add_argument("--alpha-lasso", type=float, nargs="+", default=[0.1], 
         help="One or more alphas for Lasso (must match # of downsample factors or be a single value to broadcast)")
     p.add_argument("--downsample-factors", type=int, nargs='+', default=[1])
-    p.add_argument("--out-dir", type=str, default="./results/experiment_1")
+    p.add_argument("--out-dir", type=str, default="./outputs/experiments/")
     p.add_argument("--normalize", type=bool, default=True)
     p.add_argument("--no-plot", action="store_true", help="Disable plotting")
     p.add_argument("--noise-std", type=float, default=0.0,
@@ -139,7 +139,15 @@ def main():
         las = LassoInverter(alpha=alpha_lasso)
 
         # create output dir for this resolution
-        out_dir_ds = Path(args.out_dir) / f"downsample_{downsample}"
+        # Count existing experiment folders
+        existing = sorted(Path(args.out_dir).glob("experiment_*"))
+        experiment_number = len(existing) + 1
+
+        # Create: outdir/experiment_<num>/images/downsample_<factor>
+        out_dir_ds = (Path(args.out_dir)
+            / f"experiment_{experiment_number}"
+            / "images"
+            / f"downsample_{downsample}")
         out_dir_ds.mkdir(parents=True, exist_ok=True)
 
         # time the three reconstructions over the whole val set
@@ -248,7 +256,7 @@ def main():
     else:
         print(f"Plots saved to {args.out_dir}")
     if args.noise_std > 0:
-        print(f"Evaluation used noisy currents with σ = {args.noise_std}")
+        print(f"Evaluation used noisy currents with std = {args.noise_std}")
 
 if __name__ == "__main__":
     main()

@@ -6,6 +6,7 @@ from src.models.lasso import LassoInverter
 from src.models.tikhonov import TikhonovInverter
 import matplotlib.pyplot as plt
 import os
+from pathlib import Path
 
 def rms_normalize(arr):
     """Normalize each row by its RMS value."""
@@ -113,16 +114,25 @@ def main():
                     preds_for_score = preds
                     S_test_for_score = S_test
 
+                # Base output dir
+                base_out_dir = Path("outputs/cross_val_images")
+
+                # Auto-increment test number
+                existing_tests = sorted(base_out_dir.glob("test_*"))
+                test_number = len(existing_tests) + 1
+                this_test_dir = base_out_dir / f"test_{test_number}"
+                this_test_dir.mkdir(parents=True, exist_ok=True)
+
+                print(f"Saving plots to: {this_test_dir}")
+
                 # Plot spectra if requested
                 if args.plot and args.metric == "spectra" and S_test is not None:
-                    outdir = f"plots_{method}"
-                    os.makedirs(outdir, exist_ok=True)
                     for idx_plot in range(min(5, len(S_test))):  # plot up to 5 examples
                         plt.figure()
                         plt.plot(S_test_for_score[idx_plot], label="True")
                         plt.plot(preds_for_score[idx_plot], label=f"Pred alpha={alpha}")
                         plt.legend()
-                        plt.savefig(f"{outdir}/fold{fold}_ex{idx_plot}_alpha{alpha}.png")
+                        plt.savefig(this_test_dir / f"fold{fold}_ex{idx_plot}_alpha{alpha}.png")
                         plt.close()
 
                 # Scoring

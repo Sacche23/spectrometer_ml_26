@@ -15,8 +15,8 @@ venv/
 # Logs & checkpoints
 logs/
 *.log
-experiments/**/logs/
-experiments/**/checkpoints/
+training_runs/**/logs/
+training_runs/**/checkpoints/
 slurm*
 
 # Data folders
