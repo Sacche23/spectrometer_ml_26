@@ -78,8 +78,7 @@ bash scripts/csv_to_npy.sh \
     data/responsivity_data/processed/wavelengths.npy \
     data/responsivity_data/processed/responsivity.npy
 ```
-Outputs .npy array for responsivity matrix, as well as wavelength and
-displacement values.
+Outputs .npy array for responsivity matrix, as well as wavelength and displacement values.
 
 2. **Generate spectra**
 ```bash
@@ -89,22 +88,30 @@ NOTE: edit generate_spectra.sh to contain choice of dataset, seed, sample size, 
 Will either generate random spectra + outputs as .npy files, or pull data from
 specified dataset.
 
-3. **Train model**
+3. **Determine experimental parameters**
+```bash
+bash scripts/estimate_noise.sh
+bash scripts/alpha_cross_val.sh
+```
+The first script will determine a phyiscal estimate for the standard deviation of the noise to use in the photocurrent measurement simulation.
+The second script will determine the alpha values to use for Tikhonov and Lasso regularized regression for each resolution to be compared. You may addtionally enable plotting regression outputs with --plot
+
+4. **Train model**
 ```bash
 bash scripts/train.sh
 tensorboard --logdir experiments
 ```
-Again, you may change the hyperparameters in train.sh. This will also
+Again, you may change the hyperparameters in the shell script. This will also
 launch tensorboard session to view model output throughout training.
 
-4. **Evaluate model**
+5. **Evaluate model**
 ```bash
 bash scripts/evaluate.sh
 ```
 NOTE: You MUST keep same parameters for seed and validation size as training, otherwise
 the validation split will be different from training.
 
-5. **Compare model to Lasso and Tikhonov regularized regression**
+6. **Compare model to Lasso and Tikhonov regularized regression**
 ```bash
 bash scripts/compare_experiment
 ```
@@ -112,6 +119,12 @@ For this, also keep same parameters for seed and validation size as training! Ad
 make sure to change alpha parameter to optimize Lasso/Tikhonov for your dataset. This will
 print a summary of the mean squared error of the different models vs input over validation
 dataset, as well as plotting images of the predicted spectra vs. ground truth.
+
+7. **Save sample in/out to binary file (OPTIONAL)**
+```bash
+bash scripts/infer_to_bin.sh
+```
+This is used for creating a binary file of a trained model input and output for a given spectrum for hardware validation. To see the FPGA implementation of this model look [here](https://github.com/lwylonis/spectrometer_cnn).
 
 ## Customization
 
