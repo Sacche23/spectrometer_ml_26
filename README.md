@@ -124,7 +124,7 @@ dataset, as well as plotting images of the predicted spectra vs. ground truth.
 ```bash
 bash scripts/infer_to_bin.sh
 ```
-This is used for creating a binary file of a trained model input and output for a given spectrum for hardware validation. To see the FPGA implementation of this model look [here](https://github.com/lwylonis/spectrometer_cnn).
+This is used for creating a binary file of a trained model input and output for a given spectrum for hardware validation. To see the FPGA implementation of this model look [here](https://github.com/lwylonis/bp_spectrometer_cnn).
 
 ## Customization
 
