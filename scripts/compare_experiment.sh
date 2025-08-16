@@ -11,10 +11,10 @@
 python3 -m src.cli.compare_experiment \
 	--dataset rand_sop \
 	--model cnn2 \
-	--checkpoint experiments/run_20250812_160809_rand_sop/checkpoints/epoch1000.pth \
+	--checkpoint training_runs/run_20250816_155257_rand_sop/checkpoints/epoch010.pth \
 	--normalize True \
-	--downsample-factors 1 2 4 10 20 25 40 \
+	--downsample-factors  40 \
 	--device cpu \
-	--alpha-tikh 1e-5 1e-5 1e-5 1e-4 1e-4 1e-4 1e-2 \
-	--alpha-lasso 1e-2 1e-2 1e-1 1e-1 1e-1 1e-1 1e-1 \
+	--alpha-tikh 1e-2 \
+	--alpha-lasso 1e-1 \
 	"$@"
