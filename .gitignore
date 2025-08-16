@@ -18,6 +18,7 @@ logs/
 training_runs/**/logs/
 training_runs/**/checkpoints/
 slurm*
+outputs/
 
 # Data folders
 data/responsivity_data/processed

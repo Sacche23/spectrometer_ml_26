@@ -25,7 +25,12 @@ def main():
     p.add_argument("--subset", type=int, default=20)
     p.add_argument("--metric", choices=["spectra", "currents"], default=None,
                    help="Which space to compute MSE in. Default: spectra if S.npy exists, else currents.")
-    p.add_argument("--plot", action="store_true", help="Plot predicted spectra for each alpha (test set).")
+    p.add_argument("--plot", action="store_true", help="Plot predicted spectra for final best alpha (per method).")
+    p.add_argument("--plot-n", type=int, default=5, help="How many examples to plot for the final result.")
+    p.add_argument("--outdir", type=str, default="outputs/cross_val_images",
+                   help="Where to save plots (top dir). No new dirs are created unless saving plots.")
+    p.add_argument("--no-mkdir", action="store_true",
+                   help="Do not create directories; show plots interactively instead of saving.")
     p.add_argument("--noise-std", type=float, default=0.0,
                    help="Std. dev. of Gaussian noise to add to currents in CV (0.0 = no noise).")
     p.add_argument("--normalize", action="store_true", default=True,
@@ -35,10 +40,10 @@ def main():
     alphas = [float(x) for x in args.alphas.split(",")]
 
     # Load data
-    R = np.load(args.resp)
-    I = np.load(args.currents)
+    R = np.load(args.resp)       # (m, n)
+    I = np.load(args.currents)   # (Nspec, m)
     try:
-        S_all = np.load(args.spectra)
+        S_all = np.load(args.spectra)  # (Nspec, n)
     except Exception:
         S_all = None
 
@@ -47,6 +52,7 @@ def main():
         args.metric = "spectra" if S_all is not None else "currents"
     print(f"Scoring metric: {args.metric}")
 
+    # Orientation fix so that R rows == I.shape[1] (m)
     if R.shape[0] != I.shape[1]:
         if R.shape[1] == I.shape[1]:
             R = R.T
@@ -85,7 +91,7 @@ def main():
             S_train = S_all[train_idx] if S_all is not None else None
             S_test = S_all[test_idx] if S_all is not None else None
 
-            # Add noise in current space. Scale is independent of downsample thanks to R scaling above.
+            # Add noise if requested
             if args.noise_std > 0:
                 I_train = I_train + np.random.normal(0, args.noise_std, I_train.shape)
                 I_test = I_test + np.random.normal(0, args.noise_std, I_test.shape)
@@ -106,7 +112,6 @@ def main():
                     preds.append(S_hat)
                 preds = np.array(preds)
 
-                # Optional normalization for spectra-space scoring
                 if args.metric == "spectra" and S_test is not None and args.normalize:
                     preds_for_score = rms_normalize(preds)
                     S_test_for_score = rms_normalize(S_test)
@@ -114,32 +119,9 @@ def main():
                     preds_for_score = preds
                     S_test_for_score = S_test
 
-                # Base output dir
-                base_out_dir = Path("outputs/cross_val_images")
-
-                # Auto-increment test number
-                existing_tests = sorted(base_out_dir.glob("test_*"))
-                test_number = len(existing_tests) + 1
-                this_test_dir = base_out_dir / f"test_{test_number}"
-                this_test_dir.mkdir(parents=True, exist_ok=True)
-
-                print(f"Saving plots to: {this_test_dir}")
-
-                # Plot spectra if requested
-                if args.plot and args.metric == "spectra" and S_test is not None:
-                    for idx_plot in range(min(5, len(S_test))):  # plot up to 5 examples
-                        plt.figure()
-                        plt.plot(S_test_for_score[idx_plot], label="True")
-                        plt.plot(preds_for_score[idx_plot], label=f"Pred alpha={alpha}")
-                        plt.legend()
-                        plt.savefig(this_test_dir / f"fold{fold}_ex{idx_plot}_alpha{alpha}.png")
-                        plt.close()
-
-                # Scoring
                 if args.metric == "spectra" and S_test is not None:
                     mse = mean_squared_error(S_test_for_score, preds_for_score)
                 else:
-                    # Compare in current space (not done usually)
                     I_pred = preds @ R.T
                     mse = mean_squared_error(I_test, I_pred)
                 mse_scores[alpha].append(mse)
@@ -155,6 +137,56 @@ def main():
         for a in alphas:
             print(f"{a}\t{avg_mse[a]:.6e}")
         print(f"Best alpha: {best_alpha}")
+
+    # Modified plotting section: plot first index for all alphas
+    if args.plot and args.metric == "spectra" and S_all is not None:
+        save_plots = not args.no_mkdir
+        if save_plots:
+            base_out_dir = Path(args.outdir)
+            base_out_dir.mkdir(parents=True, exist_ok=True)
+            existing_nums = [
+                int(p.name.split("_")[1])
+                for p in base_out_dir.glob("test_*")
+                if p.name.startswith("test_") and p.name.split("_")[1].isdigit()
+            ]
+            next_num = max(existing_nums, default=0) + 1
+            out_dir = base_out_dir / f"test_{next_num}"
+            out_dir.mkdir(parents=True, exist_ok=True)
+            print(f"Saving plots to: {out_dir}")
+        else:
+            print("Showing plots interactively (no directories created).")
+
+        i = 0  # always plot the first example
+        for method in ["lasso", "tikhonov"]:
+            for alpha in alphas:
+                if method == "lasso":
+                    solver = LassoInverter(alpha=alpha)
+                    S_hat = solver.solve(R, I[i])
+                else:
+                    solver = TikhonovInverter(alpha=alpha)
+                    solver.set_matrix(R)
+                    S_hat = solver.solve(I[i])
+
+                if args.normalize:
+                    pred_vis = rms_normalize(S_hat[None, :])[0]
+                    true_vis = rms_normalize(S_all[i][None, :])[0]
+                else:
+                    pred_vis = S_hat
+                    true_vis = S_all[i]
+
+                plt.figure()
+                plt.plot(true_vis, label="True")
+                plt.plot(pred_vis, label=f"{method.capitalize()} (alpha={alpha:g})")
+                plt.legend()
+                plt.title(f"{method} — example {i}")
+                plt.xlabel("Wavelength index")
+                plt.ylabel("Normalized amplitude" if args.normalize else "Amplitude")
+
+                if save_plots:
+                    plt.savefig(out_dir / f"{method}_ex{i}_alpha{alpha}.png")
+                    plt.close()
+                else:
+                    plt.show()
 
 if __name__ == "__main__":
     main()
