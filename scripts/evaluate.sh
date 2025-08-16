@@ -13,5 +13,8 @@ python3 -m src.cli.evaluate \
     --dataset rand_sop \
     --model cnn2 \
     --checkpoint experiments/run_20250812_160809_rand_sop/checkpoints/epoch1000.pth \
+    --root data/spectra_data/ \
+    --seed 42 \
+    --val-size 200 \
     --batch-size 128 \
     "$@"
