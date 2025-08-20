@@ -3,13 +3,15 @@ import os
 from pathlib import Path
 import argparse
 
-VALID_METHODS = {"rand_sop", "uniform", "custom1"}
+VALID_METHODS = {"rand_sop", "uniform", "NIST", "custom1"}
 
 def generate_S(rng: np.random.Generator, n_samples: int, s_dim : int, method : str):
     if method == "uniform":
         return rng.uniform(size=(n_samples, s_dim)).astype(float)
     elif method == "rand_sop":
         return sum_of_peaks(rng, n_samples, s_dim)
+    elif method == "NIST":
+        return nist_dataset(n_samples, s_dim)
     elif method == "custom1":
         return custom1(n_samples, s_dim)
     else:
@@ -66,6 +68,15 @@ def sum_of_peaks(
 # Custom Data Sampling Functions
 # ====================================================================================
 
+def nist_dataset(
+    num_spectra: int,
+    num_points: int
+):
+    # TODO: Import dataset to work with, take a sample of num_spectra spectra, and then
+    # sample each of these at num_points points (may require linear interpolation), and
+    # finally return a numpy array of shape (num_spectra, num_points) of floats.
+    return np.zeros((num_spectra, num_points), dtype=float)
+
 def custom1(
     num_spectra: int,
     num_points: int
@@ -93,10 +104,10 @@ def main(seed: int,
 
     S = generate_S(rng=rng, n_samples=n_samples, s_dim=s_dim, method=method)
 
-    R = np.load("data/responsivity_data/processed/responsivity.npy")
+    R = np.load(args.responsivity)
     I = S @ R
 
-    if method in {"custom1", }: # Add every real dataset here
+    if method in {"NIST", "custom1", }: # Add every real dataset here
         np.save(out_dir / f"S_{n_samples}x{s_dim}.npy", S)
         np.save(out_dir / f"I.npy", I)
     else:
@@ -113,5 +124,6 @@ if __name__=="__main__":
     p.add_argument("--method",     type=str,   required=True,
                    choices=sorted(VALID_METHODS),
                    help="generation method")
+    p.add_argument("--responsivity",type=str,  required=True)
     args = p.parse_args()
     main(args.seed, args.n_samples, args.s_dim, args.method)

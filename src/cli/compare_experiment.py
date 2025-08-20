@@ -55,6 +55,8 @@ def main():
     p.add_argument("--no-plot", action="store_true", help="Disable plotting")
     p.add_argument("--noise-std", type=float, default=0.0,
                    help="Std dev of Gaussian noise added to evaluation currents (same for all methods). Default 0.0")
+    p.add_argument("--responsivity", type=str, required=True,
+                   help="Responsivity matrix to be used")
     args = p.parse_args()
 
     # Device setup
@@ -111,7 +113,7 @@ def main():
     alpha_lasso_list = expand_list(args.alpha_lasso, "alpha-lasso")
 
     # Load responsivity; orient to (m, n_lambda)
-    R = np.load("data/responsivity_data/processed/responsivity.npy")
+    R = np.load(args.responsivity)
     R = R.T  # now shape (m=41, n_lambda=1000)
 
     # build one noisy evaluation current set (shared across all methods/resolutions)
