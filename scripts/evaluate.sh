@@ -10,9 +10,9 @@
 
 
 python3 -m src.cli.evaluate \
-    --dataset rand_sop \
+    --dataset rand_sop_823 \
     --model cnn2 \
-    --checkpoint training_runs/run_20250816_155257_rand_sop/checkpoints/epoch010.pth \
+    --checkpoint training_runs/run_20250820_145540_rand_sop_823/checkpoints/epoch720.pth \
     --root data/spectra_data/ \
     --seed 42 \
     --val-size 200 \

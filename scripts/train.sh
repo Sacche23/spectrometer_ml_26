@@ -11,7 +11,7 @@
 #SBATCH --mail-user=leo.wylonis@yale.edu
 
 python3 -m src.cli.train \
-	--dataset rand_sop \
+	--dataset rand_sop_823 \
 	--model cnn2 \
 	--seed 42 \
 	--batch-size 128 \
