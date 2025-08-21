@@ -8,7 +8,10 @@ import argparse
 from src.datasets.utils.nist_utils import (
     list_parquet_files,
     build_lambda_grid_um,
-    resample_from_parquet_file,
+    _total_rows,
+    _sample_global_indices,
+    _partition_by_file,
+    stream_selected_rows_from_parquet,
 )
 
 VALID_METHODS = {"rand_sop", "uniform", "NIST", "custom1"}
@@ -81,77 +84,41 @@ def nist_dataset(
     num_points: int
 ):
     """
-    Load spectra directly from your Parquet chunks at:
-      data/spectra_data/raw/nist/IR_data_chunk*_of_009.parquet
+    Memory-safe loader for Parquet IR data.
 
-    Columns used:
-      - 'Frequency(cm^-1)' : array-like of wavenumbers
-      - 'ir_spectra'       : array-like of intensities (same length)
+    - Scans Parquet metadata to count total rows (no heavy load).
+    - Randomly selects `num_spectra` rows across all files (or all rows if num_spectra >= total).
+    - Streams selected rows with PyArrow iter_batches(), converts ν→λ, and linearly resamples
+      onto an inclusive λ-grid from 1.0..9.5 µm of length `num_points`.
+    - Returns a float32 array of shape (num_spectra, num_points).
 
-    Returns:
-      np.ndarray of shape (num_spectra, num_points), float32,
-      sampled on the inclusive wavelength grid 1.0..9.5 µm.
-
-    Notes:
-      - Values below 2.5 µm will be ~0 after interpolation because the dataset
-        doesn't include ν > 4003 cm^-1 (i.e., λ < ~2.5 µm).
-      - If you want the grid to be strictly 2.5..9.5 µm, change the line that
-        builds lam_grid_um accordingly.
     """
-    # Build the target wavelength grid (inclusive endpoints).
-    lam_grid_um = build_lambda_grid_um(num_points, low_um=2.5, high_um=9.5)
-    # If you prefer a grid only within the available band, use:
-    # lam_grid_um = build_lambda_grid_um(num_points, low_um=2.5, high_um=9.5)
+    files = list_parquet_files("data/spectra_data/raw/nist/IR_data_chunk*_of_009.parquet")
 
-    files = list_parquet_files()  # uses your data/spectra_data/raw/nist pattern
-    rng = np.random.default_rng(0)
+    # Build target λ-grid (inclusive endpoints). Change low_um=2.5 if you want to drop sub-2.5 entirely.
+    lam_grid_um = build_lambda_grid_um(num_points, low_um=1.0, high_um=9.5)
 
-    X_rows = []
-    remaining = num_spectra
+    # 1) Count total rows across files (lightweight; metadata only)
+    total, counts = _total_rows(files)
 
-    # Simple pass over files, sampling rows from each until we have enough
-    for fp in files:
-        if remaining <= 0:
-            break
-        df = pd.read_parquet(fp)
-        n_rows = len(df)
-        if n_rows == 0:
-            continue
+    # 2) Choose exactly num_spectra rows globally (or all if requesting more)
+    global_idxs = _sample_global_indices(total, num_spectra, seed=0)
 
-        # How many to draw from this file
-        k = min(remaining, n_rows)
-        idxs = rng.choice(n_rows, size=k, replace=False)
+    # 3) Map to per-file local indices
+    per_file = _partition_by_file(files, counts, global_idxs)
 
-        Xk, _ids = resample_from_parquet_file(
-            parquet_path=fp,
-            row_indices=idxs,
-            lam_grid_um=lam_grid_um,
-            low_nu_cutoff=50.0,
-            apply_jacobian=False,   # set True if you want per-µm intensity
-            rms_normalize=True,     # matches your simulated spectra normalization
-        )
-        X_rows.append(Xk)
-        remaining -= Xk.shape[0]
-
-    if remaining > 0:
-        # Not enough rows across files (unlikely with 9×20k), fill by re-sampling with replacement
-        # so the shape contract is always met.
-        fp = files[0]
-        df0 = pd.read_parquet(fp)
-        n_rows0 = len(df0)
-        idxs = rng.integers(low=0, high=n_rows0, size=remaining)
-        Xk, _ = resample_from_parquet_file(
-            parquet_path=fp,
-            row_indices=idxs,
-            lam_grid_um=lam_grid_um,
-            low_nu_cutoff=50.0,
-            apply_jacobian=False,
-            rms_normalize=True,
-        )
-        X_rows.append(Xk)
-
-    X = np.vstack(X_rows).astype(np.float32)
+    # 4) Stream only those rows and resample each
+    X = stream_selected_rows_from_parquet(
+        files=files,
+        select_per_file=per_file,
+        lam_grid_um=lam_grid_um,
+        low_nu_cutoff=50.0,
+        apply_jacobian=True,   # set True if you want per-µm intensity
+        rms_normalize=True,
+        batch_size=512,
+    )
     return X
+
 
 def custom1(
     num_spectra: int,
@@ -184,7 +151,7 @@ def main(seed: int,
     I = S @ R
 
     if method in {"NIST", "custom1", }: # Add every real dataset here
-        np.save(out_dir / f"S_{n_samples}x{s_dim}.npy", S)
+        np.save(out_dir / f"S.npy", S)
         np.save(out_dir / f"I.npy", I)
     else:
         np.save(out_dir / f"S_s{seed}_{n_samples}x{s_dim}.npy", S)
