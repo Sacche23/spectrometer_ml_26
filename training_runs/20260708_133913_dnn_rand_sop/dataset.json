@@ -1,0 +1,17 @@
+{
+    "dataset_version": 1,
+    "method": "rand_sop",
+    "seed": 42,
+    "n_samples": 20000,
+    "s_dim": 1000,
+    "responsivity": "data/responsivity_data/processed/responsivity.npy",
+    "S_shape": [
+        20000,
+        1000
+    ],
+    "I_shape": [
+        20000,
+        41
+    ],
+    "created": "2026-07-08T13:36:59"
+}

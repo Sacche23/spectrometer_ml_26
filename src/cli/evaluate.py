@@ -4,6 +4,8 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from src.datasets.registry import get_dataset
 from src.models.model import get_model
+import json
+from pathlib import Path
 
 def r2_batch(y_pred: torch.Tensor, y_true: torch.Tensor) -> float:
     y_pred_flat = y_pred.view(-1)
@@ -41,6 +43,10 @@ def main():
     p.add_argument("--device", type=str, default=None, help="cuda or cpu")
     args = p.parse_args()
 
+    # PRINT MODEL 
+
+    print(f"Training model {args.model}")
+
     # DEVICE SETUP
     device = torch.device(args.device) if args.device else \
              torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -48,7 +54,19 @@ def main():
 
     # DATASET AND DATALOADER
     DS = get_dataset(args.dataset)
-    full_ds = DS(root=args.root)
+    full_ds = DS(
+        root=args.root,
+        seed=args.seed
+    )
+
+    print("\nDataset information:")
+
+    if hasattr(full_ds, "metadata"):
+        for key, value in full_ds.metadata.items():
+            print(f"  {key}: {value}")
+
+    print(f"  Number of samples: {len(full_ds)}")
+
     total = len(full_ds)
     train_n = total - args.val_size
     train_ds, val_ds = torch.utils.data.random_split(
@@ -65,6 +83,8 @@ def main():
 
     # MODEL
     x0, y0 = full_ds[0]
+    print(f"Input dimension : {len(x0)}")
+    print(f"Output dimension: {len(y0)}")
     ModelClass = get_model(args.model)
     model = ModelClass(input_dim=len(x0), output_dim=len(y0)).to(device)
 
@@ -72,6 +92,7 @@ def main():
     ckpt = torch.load(args.checkpoint, map_location=device)
     if isinstance(ckpt, dict) and "model_state_dict" in ckpt:
         model.load_state_dict(ckpt["model_state_dict"])
+        print(f"Evaluating epoch {ckpt.get('epoch')}")
     else:
         model.load_state_dict(ckpt)
 
@@ -82,8 +103,45 @@ def main():
     train_mse, train_r2 = evaluate_split(model, train_loader, criterion, device)
     val_mse,   val_r2   = evaluate_split(model, val_loader,   criterion, device)
 
-    print(f"Train → MSE: {train_mse:.6f},  R²: {train_r2:.4f}")
-    print(f"Val   → MSE: {val_mse:.6f},  R²: {val_r2:.4f}")
+    print("\nEvaluation Results")
+    print("-"*40)
+    print(f"Training")
+    print(f"    MSE : {train_mse:.6f}")
+    print(f"    R²  : {train_r2:.4f}")
+
+    print()
+
+    print(f"Validation")
+    print(f"    MSE : {val_mse:.6f}")
+    print(f"    R²  : {val_r2:.4f}")
+
+    results = {
+        "dataset": args.dataset,
+        "model": args.model,
+        "checkpoint": str(Path(args.checkpoint).name),
+        "epoch": ckpt.get("epoch"),
+
+        "train": {
+            "mse": train_mse,
+            "r2": train_r2,
+        },
+
+        "validation": {
+            "mse": val_mse,
+            "r2": val_r2,
+        }
+    }
+
+    results_file = (
+        Path(args.checkpoint)
+        .parents[1]
+        / "evaluation"
+        / "metrics.json"
+    )
+    with open(results_file, "w") as f:
+        json.dump(results, f, indent=4)
+
+    print(f"\nSaved evaluation to {results_file}")
 
 if __name__ == "__main__":
     main()

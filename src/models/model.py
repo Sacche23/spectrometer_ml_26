@@ -177,3 +177,65 @@ class CNN2(nn.Module):
         rms = torch.sqrt(ms + 1e-6)
         x   = x / rms
         return x
+    
+#------------------------------------------------------------------
+# Summer 2026
+#------------------------------------------------------------------
+
+@register_model("dnn")
+class SpectrumDNN(nn.Module):
+# MLP adapted from Wen et al. (ACS Photonics, 2023)
+# Input-BN-LR-FC-500-BN-LR-FC-500-BN-LR-FC-301-BN-LR-Output
+    def __init__(self, input_dim, output_dim):
+        super().__init__()
+        self.fc1 = nn.Linear(input_dim, 500)
+        self.bn1 = nn.BatchNorm1d(500)
+
+        self.fc2 = nn.Linear(500, 500)
+        self.bn2 = nn.BatchNorm1d(500)
+
+        self.fc3 = nn.Linear(500, 500)
+        self.bn3 = nn.BatchNorm1d(500)
+
+        self.fc4 = nn.Linear(500, output_dim)
+        
+        # Leaky ReLU activation.
+        self.leaky_relu = nn.LeakyReLU(negative_slope=0.01)
+
+        # Dropout for regularization
+        # p=0.3 means 30% of neurons are dropped each step.
+        self.dropout = nn.Dropout(p=0.3)
+
+    def forward(self, x):
+        # x: input tensor of shape (batch_size, input_dim)
+        #    e.g., (128, 1000) for a batch of 128 photocurrent vectors
+        # returns: tensor of shape (batch_size, output_dim)
+        
+        # Layer 1: FC → BN → LeakyReLU
+        x = self.fc1(x)
+        x = self.bn1(x)
+        x = self.leaky_relu(x)
+        x = self.dropout(x)
+
+        # Layer 2: FC → BN → LeakyReLU
+        x = self.fc2(x)
+        x = self.bn2(x)
+        x = self.leaky_relu(x)
+        x = self.dropout(x)
+        
+        # Layer 3: FC → BN → LeakyReLU
+        x = self.fc3(x)
+        x = self.bn3(x)
+        x = self.leaky_relu(x)
+        x = self.dropout(x)
+
+        # Output layer: FC → BN → LeakyReLU
+        # No BN, LR, or dropout on the output layer.
+        x = self.fc4(x)          # → (batch_size, output_dim)
+
+        # RMS Normalization
+        ms = torch.mean(x.pow(2), dim=1, keepdim=True)
+        rms = torch.sqrt(ms + 1e-6)
+        x = x / rms
+
+        return x

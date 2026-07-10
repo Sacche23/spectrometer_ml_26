@@ -8,14 +8,15 @@
 #SBATCH --mem=32G               # RAM
 #SBATCH --time=02:00:00         # HH:MM:SS
 #SBATCH --mail-type=END,FAIL
-#SBATCH --mail-user=leo.wylonis@yale.edu
+#SBATCH --mail-user=diego.sacchettoni@yale.edu
 
 python3 -m src.cli.train \
-	--dataset rand_sop_823 \
-	--model cnn2 \
+    --experiment-dir auto \
+	--dataset rand_sop \
+	--model dnn \
 	--seed 42 \
 	--batch-size 128 \
-	--num-epochs 1000 \
+	--num-epochs 20 \
 	--learning-rate 1e-3 \
 	--learning-rate-decay 0.6 \
 	--learning-rate-period 200 \

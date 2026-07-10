@@ -4,8 +4,8 @@ import argparse
 def main():
     p = argparse.ArgumentParser(description="Estimate realistic noise for BP spectrometer data.")
     p.add_argument("--resp", default="data/responsivity_data/processed/responsivity.npy")
-    p.add_argument("--currents", default="data/spectra_data/processed/rand_sop/I_s42.npy")
-    p.add_argument("--spectra", default="data/spectra_data/processed/rand_sop/S_s42.npy")
+    p.add_argument("--currents", default="data/spectra_data/processed/rand_sop/I.npy")
+    p.add_argument("--spectra", default="data/spectra_data/processed/rand_sop/S.npy")
     p.add_argument("--subset", type=int, default=1000, help="Subset size for estimation to avoid memory issues.")
     args = p.parse_args()
 

@@ -1,0 +1,14 @@
+{
+    "dataset": "rand_sop",
+    "model": "cnn2",
+    "checkpoint": "best.pth",
+    "epoch": 5,
+    "train": {
+        "mse": 0.32581815123558044,
+        "r2": 0.6360092163085938
+    },
+    "validation": {
+        "mse": 0.3360573947429657,
+        "r2": 0.6245137453079224
+    }
+}

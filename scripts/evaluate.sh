@@ -10,11 +10,12 @@
 
 
 python3 -m src.cli.evaluate \
-    --dataset rand_sop_823 \
+    --dataset rand_sop \
     --model cnn2 \
-    --checkpoint training_runs/run_20250820_145540_rand_sop_823/checkpoints/epoch720.pth \
+    --checkpoint experiments/20260710_1519_rand_sop_seed42/cnn2/checkpoints/best.pth \
     --root data/spectra_data/ \
     --seed 42 \
     --val-size 200 \
     --batch-size 128 \
     "$@"
+    

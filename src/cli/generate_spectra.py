@@ -3,6 +3,8 @@ import pandas as pd
 import os
 from pathlib import Path
 import argparse
+import json
+from datetime import datetime
 
 # Imports
 from src.datasets.utils.nist_utils import (
@@ -136,7 +138,9 @@ def custom1(
 def main(seed: int,
          n_samples: int,
          s_dim: int,
-         method: str):
+         method: str,
+         responsivity: str,
+         ):
     
     if method not in VALID_METHODS:
         raise ValueError(f"Invalid method '{method}'. Valid choices are: {sorted(VALID_METHODS)}")
@@ -147,16 +151,27 @@ def main(seed: int,
 
     S = generate_S(rng=rng, n_samples=n_samples, s_dim=s_dim, method=method)
 
-    R = np.load(args.responsivity)
+    R = np.load(responsivity)
     I = S @ R
 
-    if method in {"NIST", "custom1", }: # Add every real dataset here
-        np.save(out_dir / f"S.npy", S)
-        np.save(out_dir / f"I.npy", I)
-    else:
-        np.save(out_dir / f"S_s{seed}_{n_samples}x{s_dim}.npy", S)
-        np.save(out_dir / f"I_s{seed}_{n_samples}x{s_dim}.npy", I)
+    np.save(out_dir / f"S.npy", S)
+    np.save(out_dir / f"I.npy", I)
     print(f"Wrote S.shape={S.shape}, I.shape={I.shape} to {out_dir!r}")
+
+    metadata = {
+    "dataset_version": 1,
+    "method": method,
+    "seed": seed,
+    "n_samples": n_samples,
+    "s_dim": s_dim,
+    "responsivity": args.responsivity,
+    "S_shape": list(S.shape),
+    "I_shape": list(I.shape),
+    "created": datetime.now().isoformat(timespec="seconds")
+    }
+
+    with open(out_dir / "dataset.json", "w") as f:
+        json.dump(metadata, f, indent=4)
 
 if __name__=="__main__":
     p = argparse.ArgumentParser()
@@ -169,4 +184,10 @@ if __name__=="__main__":
                    help="generation method")
     p.add_argument("--responsivity",type=str,  required=True)
     args = p.parse_args()
-    main(args.seed, args.n_samples, args.s_dim, args.method)
+    main(
+    args.seed,
+    args.n_samples,
+    args.s_dim,
+    args.method,
+    args.responsivity,
+    )

@@ -1,0 +1,14 @@
+{
+    "dataset": "rand_sop",
+    "model": "dnn",
+    "checkpoint": "best.pth",
+    "epoch": 18,
+    "train": {
+        "mse": 0.3725135326385498,
+        "r2": 0.5838429927825928
+    },
+    "validation": {
+        "mse": 0.3771287202835083,
+        "r2": 0.5786235332489014
+    }
+}
