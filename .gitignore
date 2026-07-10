@@ -1,6 +1,11 @@
 # Python bytecode
 __pycache__/
 *.py[cod]
+*.pyc
+*.pyo
+
+# Generated experiment outputs
+experiments/
 
 # Virtual environments
 .venv/
@@ -11,14 +16,6 @@ venv/
 
 # Jupyter
 .ipynb_checkpoints/
-
-# Logs & checkpoints
-logs/
-*.log
-training_runs/**/logs/
-training_runs/**/checkpoints/
-slurm*
-outputs/
 
 # Data folders
 data/responsivity_data/processed
@@ -33,3 +30,7 @@ scripts/src
 
 # IDE settings
 .vscode/
+
+# OS files
+.DS_Store
+Thumbs.db

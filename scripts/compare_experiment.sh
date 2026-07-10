@@ -9,13 +9,11 @@
 #SBATCH --error=logs/%j.err
 
 python3 -m src.cli.compare_experiment \
-	--dataset rand_sop \
-	--model dnn \
-	--checkpoint training_runs/run_20260706_113848_rand_sop/checkpoints/epoch020.pth \
-	--normalize True \
-	--downsample-factors 4 \
-	--device cpu \
-	--alpha-tikh 1e-2 \
-	--alpha-lasso 1e-1 \
-	--responsivity data/responsivity_data/processed/responsivity.npy \
-	"$@"
+    --experiment-dir experiments/20260710_1519_rand_sop_seed42 \
+    --models dnn cnn2 \
+    --dataset rand_sop \
+    --responsivity data/responsivity_data/processed/responsivity.npy \
+    --seed 42 \
+    --val-size 200 \
+    --device cpu \
+    "$@"
