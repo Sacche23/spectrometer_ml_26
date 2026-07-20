@@ -11,11 +11,11 @@
 
 python3 -m src.cli.evaluate \
     --dataset rand_sop \
-    --model cnn2 \
-    --checkpoint experiments/20260710_1519_rand_sop_seed42/cnn2/checkpoints/best.pth \
+    --model cui_mlp_v2 \
+    --checkpoint experiments/debug_mlp_2/cui_mlp_v2/checkpoints/best.pth \
     --root data/spectra_data/ \
     --seed 42 \
     --val-size 200 \
-    --batch-size 128 \
+    --batch-size 32 \
     "$@"
     

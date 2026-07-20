@@ -183,6 +183,8 @@ def train(
         model.train()
         running_loss = 0.0
 
+        # print(epoch)
+
         for batch_idx, (currents, spectra) in enumerate(train_loader, start=1):
             currents = currents.to(device, non_blocking=True)
             spectra = spectra.to(device, non_blocking=True)

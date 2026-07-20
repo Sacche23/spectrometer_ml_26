@@ -11,15 +11,15 @@
 #SBATCH --mail-user=diego.sacchettoni@yale.edu
 
 python3 -m src.cli.train \
-    --experiment-dir auto \
+    --experiment-dir experiments/debug_mlp_3 \
 	--dataset rand_sop \
-	--model dnn \
+	--model wen_mlp \
 	--seed 42 \
-	--batch-size 128 \
+	--batch-size 32 \
 	--num-epochs 20 \
 	--learning-rate 1e-3 \
-	--learning-rate-decay 0.6 \
-	--learning-rate-period 200 \
+	--learning-rate-decay 0.1 \
+	--learning-rate-period 60 \
 	--gaussian-noise True \
 	--gaussian-noise-std 1e-4 \
 	--validation-size 200 \

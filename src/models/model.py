@@ -182,10 +182,12 @@ class CNN2(nn.Module):
 # Summer 2026
 #------------------------------------------------------------------
 
-@register_model("dnn")
+@register_model("wen_mlp") #aka: dnn
 class SpectrumDNN(nn.Module):
-# MLP adapted from Wen et al. (ACS Photonics, 2023)
-# Input-BN-LR-FC-500-BN-LR-FC-500-BN-LR-FC-301-BN-LR-Output
+    """
+    MLP adapted from Wen et al. (ACS Photonics, 2023)
+    Input-BN-LR-FC-500-BN-LR-FC-500-BN-LR-FC-301-BN-LR-Output
+    """ 
     def __init__(self, input_dim, output_dim):
         super().__init__()
         self.fc1 = nn.Linear(input_dim, 500)
@@ -194,13 +196,15 @@ class SpectrumDNN(nn.Module):
         self.fc2 = nn.Linear(500, 500)
         self.bn2 = nn.BatchNorm1d(500)
 
-        self.fc3 = nn.Linear(500, 500)
-        self.bn3 = nn.BatchNorm1d(500)
+        self.fc3 = nn.Linear(500, output_dim)
+        # self.bn3 = nn.BatchNorm1d(500)
 
-        self.fc4 = nn.Linear(500, output_dim)
+        # self.fc4 = nn.Linear(500, output_dim)
         
         # Leaky ReLU activation.
         self.leaky_relu = nn.LeakyReLU(negative_slope=0.01)
+        # ReLU activation
+        self.relu = nn.ReLU()
 
         # Dropout for regularization
         # p=0.3 means 30% of neurons are dropped each step.
@@ -225,13 +229,299 @@ class SpectrumDNN(nn.Module):
         
         # Layer 3: FC → BN → LeakyReLU
         x = self.fc3(x)
-        x = self.bn3(x)
-        x = self.leaky_relu(x)
-        x = self.dropout(x)
+        # x = self.bn3(x)
+        # x = self.leaky_relu(x)
+        # x = self.dropout(x)
 
         # Output layer: FC → BN → LeakyReLU
         # No BN, LR, or dropout on the output layer.
-        x = self.fc4(x)          # → (batch_size, output_dim)
+        # x = self.fc4(x)          # → (batch_size, output_dim)
+        x = self.relu(x)
+
+        # RMS Normalization
+        ms = torch.mean(x.pow(2), dim=1, keepdim=True)
+        rms = torch.sqrt(ms + 1e-6)
+        x = x / rms
+
+        return x
+
+@register_model("unet")
+class UNet1DBhatti(nn.Module):
+    """
+    1D U-Net following Bhatti et al. (2025).
+
+    Key features vs. a plain U-Net:
+    1. Dense pre-expansion: maps input to output_dim before U-Net
+    2. Residual blocks in contracting path (ResNet-style shortcut within each block)
+    3. Strided Conv for downsampling (not MaxPool)
+    4. Standard ConvTranspose + concatenate + residual block in expansive path
+    5. Global residual: U-Net output + pre-expanded input
+    """
+
+    def __init__(self, input_dim, output_dim):
+        super().__init__()
+        self.output_dim = output_dim
+
+        # --- Step 1: Dense layer pre-expansion ---
+        # Maps 36 (or N) intensities → output_dim (350/1000/823)
+        # This is the linear transformation that "extends" the measurement
+        # vector to the full output resolution before the U-Net sees it.
+        self.dense = nn.Linear(input_dim, output_dim)
+
+        # --- Contracting path (encoder) ---
+        # Stage 1: no downsampling, establishes base feature maps
+        self.enc1 = self._residual_block(1, 64, stride=1)
+
+        # Stages 2-5: each halves the sequence length and doubles channels
+        # stride=2 in the Conv replaces MaxPool
+        self.enc2 = self._residual_block(64, 128, stride=2)
+        self.enc3 = self._residual_block(128, 256, stride=2)
+        self.enc4 = self._residual_block(256, 512, stride=2)
+        self.enc5 = self._residual_block(512, 1024, stride=2)  # bottleneck
+
+        # --- Expansive path (decoder) ---
+        # Each stage: upsample → concatenate skip → residual block
+        self.up4 = nn.ConvTranspose1d(1024, 512, kernel_size=2, stride=2)
+        self.dec4 = self._residual_block(1024, 512, stride=1)  # 1024 due to concat
+
+        self.up3 = nn.ConvTranspose1d(512, 256, kernel_size=2, stride=2)
+        self.dec3 = self._residual_block(512, 256, stride=1)
+
+        self.up2 = nn.ConvTranspose1d(256, 128, kernel_size=2, stride=2)
+        self.dec2 = self._residual_block(256, 128, stride=1)
+
+        self.up1 = nn.ConvTranspose1d(128, 64, kernel_size=2, stride=2)
+        self.dec1 = self._residual_block(128, 64, stride=1)
+
+        # Final conv: maps 64 feature maps back to 1 channel (the spectrum)
+        self.final_conv = nn.Conv1d(64, 1, kernel_size=1)
+
+    def _residual_block(self, in_channels, out_channels, stride=1):
+        """
+        One residual block as described by Bhatti et al.:
+
+        Main branch:   Conv(stride) → BaN → ReLU → Conv → BaN
+        Shortcut:      Conv(stride) → BaN
+        Output:        main + shortcut (then ReLU applied after addition)
+
+        If stride=2, this block also halves the sequence length.
+        The shortcut uses a 1x1 Conv to match dimensions.
+        """
+        return ResidualBlock1D(in_channels, out_channels, stride)
+    
+    def _pad_to_match(self, x, target):
+        diff = target.shape[-1] - x.shape[-1]
+        if diff > 0:
+            x = F.pad(x, (0, diff))
+        elif diff < 0:
+            # x is longer → crop the extra values
+            x = x[..., :target.shape[-1]]
+        return x
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # x: [batch, input_dim]
+
+        # Step 1: Dense pre-expansion
+        # "36 measured intensities were extended to a size of 350 by
+        #  applying a linear transformation using the dense layer"
+        x_expanded = self.dense(x)          # [batch, output_dim]
+
+        # Reshape for 1D convolutions: add channel dimension
+        # [batch, output_dim] → [batch, 1, output_dim]
+        h = x_expanded.unsqueeze(1)
+
+        # Step 2: Contracting path (save each stage for skip connections)
+        e1 = self.enc1(h)   # [batch, 64,   L]
+        e2 = self.enc2(e1)  # [batch, 128,  L/2]
+        e3 = self.enc3(e2)  # [batch, 256,  L/4]
+        e4 = self.enc4(e3)  # [batch, 512,  L/8]
+        e5 = self.enc5(e4)  # [batch, 1024, L/16] — bottleneck
+
+        # Step 3: Expansive path with skip connections
+        # After each upsample, concatenate with corresponding encoder output,
+        # then pass through residual block (repeated 4 times as stated)
+        d4 = self.up4(e5)
+        d4 = self._pad_to_match(d4, e4)
+        d4 = self.dec4(torch.cat([d4, e4], dim=1))
+
+        d3 = self.up3(d4)
+        d3 = self._pad_to_match(d3, e3)
+        d3 = self.dec3(torch.cat([d3, e3], dim=1))
+
+        d2 = self.up2(d3)
+        d2 = self._pad_to_match(d2, e2)
+        d2 = self.dec2(torch.cat([d2, e2], dim=1))
+
+        d1 = self.up1(d2)
+        d1 = self._pad_to_match(d1, e1)
+        d1 = self.dec1(torch.cat([d1, e1], dim=1))
+
+        # Final conv: [batch, 64, L] → [batch, 1, L] → [batch, L]
+        unet_out = self.final_conv(d1).squeeze(1)
+        
+        # Step 4: Global residual
+        # "the output signal and extended intensities were added"
+        # This means the U-Net only needs to learn the correction,
+        # not the full spectrum from scratch
+        out = unet_out + x_expanded
+
+        # RMS Normalization
+        ms = torch.mean(out.pow(2), dim=1, keepdim=True)
+        rms = torch.sqrt(ms + 1e-6)
+        out = out / rms
+
+        return out  # Note: Bhatti et al. do NOT apply ReLU here
+        # (their spectra are normalized 0-1 and the residual
+        # learning handles non-negativity implicitly)
+class ResidualBlock1D(nn.Module):
+    """
+    The core building block. Two branches that are summed:
+
+    Main:     Conv(k=3, stride) → BaN → ReLU → Conv(k=3) → BaN
+    Shortcut: Conv(k=1, stride) → BaN   ← matches dimensions
+
+    This is exactly the pattern described in the paper's
+    DL-architecture section and references He et al. (ref 63).
+    """
+    def __init__(self, in_channels, out_channels, stride=1):
+        super().__init__()
+
+        # Main branch
+        self.main = nn.Sequential(
+            nn.Conv1d(in_channels, out_channels,
+                      kernel_size=3, stride=stride, padding=1),
+            nn.BatchNorm1d(out_channels),
+            nn.ReLU(inplace=True),
+            nn.Conv1d(out_channels, out_channels,
+                      kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm1d(out_channels),
+        )
+
+        # Shortcut branch — only needed when dimensions change
+        if stride != 1 or in_channels != out_channels:
+            self.shortcut = nn.Sequential(
+                nn.Conv1d(in_channels, out_channels,
+                          kernel_size=1, stride=stride),
+                nn.BatchNorm1d(out_channels),
+            )
+        else:
+            self.shortcut = nn.Identity()
+
+        self.relu = nn.ReLU(inplace=True)
+
+    def forward(self, x):
+        return self.relu(self.main(x) + self.shortcut(x))
+
+@register_model("cui_mlp")
+class SpectrumDNN(nn.Module):
+    """
+    # MLP adapted from Cui et al. (Optics Communications, 2026)
+    Original paper: MLP refines a MAP solver output (FMAP) → final spectrum.
+    Adaptation: applied directly to photocurrent vectors, skipping MAP pre-processing.
+
+    Architecture: Input → FC(256) → GELU → FC(256) → GELU → FC(output) → Softplus
+    """
+    def __init__(self, input_dim, output_dim):
+        super().__init__()
+
+        self.fc1 = nn.Linear(input_dim, 256)
+        # self.bn1 = nn.BatchNorm1d(256)
+
+        self.fc2 = nn.Linear(256, 256)
+        # self.bn2 = nn.BatchNorm1d(256)
+
+        self.fc3 = nn.Linear(256, output_dim)
+        
+        # GELU activation
+        self.gelu = nn.GELU()
+        # Softplus activation
+        self.softplus = nn.Softplus()
+
+        # Dropout for regularization
+        # p=0.3 means 30% of neurons are dropped each step.
+        # self.dropout = nn.Dropout(p=0.2)
+
+    def forward(self, x):
+        # x: input tensor of shape (batch_size, input_dim)
+        #    e.g., (128, 1000) for a batch of 128 photocurrent vectors
+        # returns: tensor of shape (batch_size, output_dim)
+        
+        # Layer 1: FC → BN → GELU
+        x = self.fc1(x)
+        # x = self.bn1(x)
+        x = self.gelu(x)
+        # x = self.dropout(x)
+
+        # Layer 2: FC → BN → GELU
+        x = self.fc2(x)
+        # x = self.bn2(x)
+        x = self.gelu(x)
+        # x = self.dropout(x)
+
+        # Output layer: Softplus
+        # No BN, GL, or dropout on the output layer.
+        x = self.fc3(x)          # → (batch_size, output_dim)
+        x = self.softplus(x)
+
+        # RMS Normalization
+        ms = torch.mean(x.pow(2), dim=1, keepdim=True)
+        rms = torch.sqrt(ms + 1e-6)
+        x = x / rms
+
+        return x
+    
+@register_model("cui_mlp_v2")
+class SpectrumDNN(nn.Module):
+    """
+    # MLP adapted from Cui et al. (Optics Communications, 2026)
+    Original paper: MLP refines a MAP solver output (FMAP) → final spectrum.
+    Adaptation: applied directly to photocurrent vectors, skipping MAP pre-processing.
+    V2: Added dropout, BN, for potentially better performance.
+
+    Architecture: 
+    Input → FC(256) → BN → GELU → FC(256) → BN → GELU → FC(output) → Softplus
+    """
+    def __init__(self, input_dim, output_dim):
+        super().__init__()
+
+        self.fc1 = nn.Linear(input_dim, 256)
+        self.bn1 = nn.BatchNorm1d(256)
+
+        self.fc2 = nn.Linear(256, 256)
+        self.bn2 = nn.BatchNorm1d(256)
+
+        self.fc3 = nn.Linear(256, output_dim)
+        
+        # GELU activation
+        self.gelu = nn.GELU()
+        # Softplus activation
+        self.softplus = nn.Softplus()
+
+        # Dropout for regularization
+        # p=0.3 means 30% of neurons are dropped each step.
+        self.dropout = nn.Dropout(p=0.2)
+
+    def forward(self, x):
+        # x: input tensor of shape (batch_size, input_dim)
+        #    e.g., (128, 1000) for a batch of 128 photocurrent vectors
+        # returns: tensor of shape (batch_size, output_dim)
+        
+        # Layer 1: FC → BN → GELU
+        x = self.fc1(x)
+        x = self.bn1(x)
+        x = self.gelu(x)
+        x = self.dropout(x)
+
+        # Layer 2: FC → BN → GELU
+        x = self.fc2(x)
+        x = self.bn2(x)
+        x = self.gelu(x)
+        x = self.dropout(x)
+
+        # Output layer: Softplus
+        # No BN, GL, or dropout on the output layer.
+        x = self.fc3(x)          # → (batch_size, output_dim)
+        x = self.softplus(x)
 
         # RMS Normalization
         ms = torch.mean(x.pow(2), dim=1, keepdim=True)
