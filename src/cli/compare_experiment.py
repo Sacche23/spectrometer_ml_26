@@ -68,6 +68,36 @@ def load_model(model_name, checkpoint_path, input_dim, output_dim, device):
     print(f"  Loaded {model_name} from {checkpoint_path}")
     return model
 
+def plot_loss_comparison(experiment_dir: Path, model_names: list, comparison_dir: Path):
+    """
+    Reads each model's loss_history.json and overlays their validation
+    loss curves on ONE shared plot, so you can visually compare how fast
+    and how far each architecture's training converged.
+    """
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    for model_name in model_names:
+        history_path = experiment_dir / model_name / "evaluation" / "loss_history.json"
+        if not history_path.exists():
+            print(f"  WARNING: no loss_history.json for '{model_name}', skipping in comparison plot.")
+            continue
+
+        with open(history_path) as f:
+            history = json.load(f)
+
+        ax.plot(history["epoch"], history["val_loss"], label=model_name)
+
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("Validation MSE Loss")
+    ax.set_yscale("log")
+    ax.set_title("Validation Loss Comparison Across Models")
+    ax.legend(fontsize=8)
+    ax.grid(True, alpha=0.3)
+
+    out_path = comparison_dir / "loss_comparison.png"
+    fig.savefig(out_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print(f"Saved loss comparison plot to {out_path}")
 
 # ====================================================================================
 # Main
@@ -355,6 +385,11 @@ def main():
     fig.savefig(chart_path, dpi=120)
     plt.close(fig)
     print(f"Saved chart  to {chart_path}")
+
+    # ------------------------------------------------------------------
+    # Overlaid validation loss curves
+    # ------------------------------------------------------------------
+    plot_loss_comparison(experiment_dir, loaded_models, comparison_dir)
 
     # ------------------------------------------------------------------
     # summary.txt

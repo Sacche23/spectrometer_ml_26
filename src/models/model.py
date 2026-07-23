@@ -476,7 +476,7 @@ class SpectrumDNN(nn.Module):
     # MLP adapted from Cui et al. (Optics Communications, 2026)
     Original paper: MLP refines a MAP solver output (FMAP) → final spectrum.
     Adaptation: applied directly to photocurrent vectors, skipping MAP pre-processing.
-    V2: Added dropout, BN, for potentially better performance.
+    V2: Added dropout, BN, for better performance.
 
     Architecture: 
     Input → FC(256) → BN → GELU → FC(256) → BN → GELU → FC(output) → Softplus
@@ -529,3 +529,42 @@ class SpectrumDNN(nn.Module):
         x = x / rms
 
         return x
+
+def make_cui_mlp_v2(hidden1: int, hidden2: int):
+    """
+    Factory function: returns a NEW CLASS (not an instance!) with the given
+    hidden layer sizes baked in. Think of this like a cookie-cutter template —
+    calling make_cui_mlp_v2(256, 512) stamps out a class shaped exactly like
+    SpectrumDNN, but with 256 and 512 neurons instead of hardcoded 256/256.
+    """
+    class CuiMLPv2(nn.Module):
+        def __init__(self, input_dim, output_dim):
+            super().__init__()
+            self.fc1 = nn.Linear(input_dim, hidden1)
+            self.bn1 = nn.BatchNorm1d(hidden1)
+
+            self.fc2 = nn.Linear(hidden1, hidden2)
+            self.bn2 = nn.BatchNorm1d(hidden2)
+
+            self.fc3 = nn.Linear(hidden2, output_dim)
+
+            self.gelu = nn.GELU()
+            self.softplus = nn.Softplus()
+            self.dropout = nn.Dropout(p=0.2)
+
+        def forward(self, x):
+            x = self.dropout(self.gelu(self.bn1(self.fc1(x))))
+            x = self.dropout(self.gelu(self.bn2(self.fc2(x))))
+            x = self.softplus(self.fc3(x))
+
+            ms = torch.mean(x.pow(2), dim=1, keepdim=True)
+            rms = torch.sqrt(ms + 1e-6)
+            return x / rms
+
+    return CuiMLPv2
+
+# Now register one variant per (hidden1, hidden2) combination:
+for h1 in [256, 512, 1024]:
+    for h2 in [256, 512, 1024]:
+        name = f"cui_mlp_v2_{h1}_{h2}"
+        register_model(name)(make_cui_mlp_v2(h1, h2))

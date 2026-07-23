@@ -96,6 +96,11 @@ def train(
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
     scheduler = StepLR(optimizer, step_size=learning_rate_period, gamma=learning_rate_decay) # multiply lr * gamma every N steps
 
+    # TRACK MSE LOSS
+    train_loss_history = []
+    val_loss_history = []
+    epoch_history = []
+
     # TRACK BEST EPOCH AND LOSS
     best_val_loss = float("inf")
     best_epoch = 1
@@ -215,6 +220,11 @@ def train(
                 val_loss += criterion(preds, spectra).item() * currents.size(0)
         val_loss = val_loss / val_size
 
+        # Update MSE loss history
+        train_loss_history.append(train_loss)
+        val_loss_history.append(val_loss)
+        epoch_history.append(epoch)
+
         writer.add_scalar("Loss/train", train_loss, epoch)
         writer.add_scalar("Loss/val",   val_loss,   epoch)
 
@@ -280,7 +290,17 @@ def train(
             )
     print("\nTraining complete.")
     print(f"Best epoch: {best_epoch}")
-    print(f"Best validation loss: {best_val_loss:.6f}")        
+    print(f"Best validation loss: {best_val_loss:.6f}")     
+    
+    # SAVE MSE LOSS
+    history = {
+    "epoch": epoch_history,
+    "train_loss": train_loss_history,
+    "val_loss": val_loss_history,
+    }
+    with open(eval_dir / "loss_history.json", "w") as f:
+        json.dump(history, f, indent=2)
+    print(f"Saved loss history to {eval_dir / 'loss_history.json'}")   
 
 if __name__=="__main__":
 

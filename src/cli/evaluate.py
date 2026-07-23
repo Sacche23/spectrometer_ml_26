@@ -5,6 +5,7 @@ from torch.utils.data import DataLoader
 from src.datasets.registry import get_dataset
 from src.models.model import get_model
 import json
+import matplotlib.pyplot as plt
 from pathlib import Path
 
 def r2_batch(y_pred: torch.Tensor, y_true: torch.Tensor) -> float:
@@ -29,6 +30,36 @@ def evaluate_split(model, loader, criterion, device):
             total_r2  += r2_batch(pred, y) * x.size(0)
             n += x.size(0)
     return total_mse / n, total_r2 / n
+
+def plot_loss_curve(eval_dir: Path):
+    """
+    Reads loss_history.json (written by train.py) and plots train vs. val
+    loss over epochs for THIS model only. Saves as loss_curve.png in the
+    same evaluation folder as metrics.json.
+    """
+    history_path = eval_dir / "loss_history.json"
+    if not history_path.exists():
+        print(f"  No loss_history.json found at {history_path} — skipping plot. "
+              f"(Was this checkpoint trained before the history-saving update?)")
+        return
+
+    with open(history_path) as f:
+        history = json.load(f)
+
+    fig, ax = plt.subplots(figsize=(7, 5))
+    ax.plot(history["epoch"], history["train_loss"], label="Train Loss")
+    ax.plot(history["epoch"], history["val_loss"],   label="Validation Loss")
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("MSE Loss")
+    ax.set_yscale("log")
+    ax.set_title("Training Progress")
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+
+    out_path = eval_dir / "loss_curve.png"
+    fig.savefig(out_path, dpi=120, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  Saved loss curve to {out_path}")
 
 def main():
     p = argparse.ArgumentParser(description="Evaluate a checkpoint on train/val splits")
@@ -142,6 +173,10 @@ def main():
         json.dump(results, f, indent=4)
 
     print(f"\nSaved evaluation to {results_file}")
+    
+    # Generate the loss-over-epochs plot for this model
+    plot_loss_curve(results_file.parent)
+
 
 if __name__ == "__main__":
     main()
