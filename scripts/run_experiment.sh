@@ -23,7 +23,7 @@ python3 -m src.cli.run_experiment \
     --dataset rand_sop \
     --seed 42 \
     --batch-size 32 \
-    --num-epochs 75 \
+    --num-epochs 500 \
     --learning-rate 1e-3 \
     --learning-rate-decay 0.1 \
     --learning-rate-period 60 \
