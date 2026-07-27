@@ -7,8 +7,8 @@ from torch.utils.data import Dataset
 class NPYCachedDataset(Dataset):
     '''
     Creates I.npy and S.npy pairs under
-    {root}/spectra_data/processed/{name}/I[_s{seed}].npy
-    {root}/spectra_data/processed/{name}/S[_s{seed}].npy
+    {root}/spectra_data/processed/{name}/I.npy
+    {root}/spectra_data/processed/{name}/S.npy
     '''
     def __init__(self,
                  root: str,
