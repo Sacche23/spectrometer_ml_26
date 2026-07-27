@@ -9,8 +9,10 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --mail-user=diego.sacchettoni@yale.edu
 
+module reset
 module load miniconda
-conda activate spectro
+
+conda activate cenv
 
 export OMP_NUM_THREADS=4
 

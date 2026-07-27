@@ -1,12 +1,11 @@
 #!/bin/bash
-#SBATCH --job-name=my_ml_train
+#SBATCH --job-name=train_model
 #SBATCH --output=logs/%j.out
 #SBATCH --error=logs/%j.err
-#SBATCH --partition=gpu
-#SBATCH --gres=gpu:1            # Number of GPUs
-#SBATCH --cpus-per-task=8       # Number of CPU cores
-#SBATCH --mem=32G               # RAM
-#SBATCH --time=02:00:00         # HH:MM:SS
+#SBATCH --partition=day
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=8G
+#SBATCH --time=08:00:00
 #SBATCH --mail-type=END,FAIL
 #SBATCH --mail-user=diego.sacchettoni@yale.edu
 

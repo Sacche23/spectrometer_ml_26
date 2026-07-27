@@ -109,6 +109,10 @@ def main():
                         "e.g. data/responsivity_data/processed/responsivity.npy")
     p.add_argument("--no-plot", action="store_true",
                    help="Skip per-sample plots in the comparison step (faster).")
+    p.add_argument("--auto-compare", action="store_true",
+                   help="Skip the interactive y/n prompt and always run comparison. "
+                        "Also triggers automatically when stdin is not a terminal "
+                        "(e.g. running under sbatch on the HPC).")
 
     args = p.parse_args()
 
@@ -219,18 +223,31 @@ def main():
     # Step 3 — Ask whether to run comparison
     # ------------------------------------------------------------------
 
-    if len(evaluated_models) == 1:
-        prompt = (
-            f"Only one model ({evaluated_models[0]}) was trained. "
-            f"Run physics-aware comparison (Gaussian-smoothed MSE + sample plots)?"
-        )
-    else:
-        prompt = (
-            f"Run comparison across {evaluated_models}? "
-            f"This produces MSE/R² charts, per-sample plots, metrics.csv, and summary.txt."
-        )
+    # Decide whether we can/should ask interactively. Batch jobs (sbatch)
+    # have no terminal attached, so stdin.isatty() is False — in that case
+    # (or if the user explicitly passed --auto-compare) we skip the prompt
+    # entirely and just run the comparison automatically.
+    running_non_interactively = not sys.stdin.isatty()
 
-    if not confirm(prompt):
+    if args.auto_compare or running_non_interactively:
+        if running_non_interactively and not args.auto_compare:
+            print("\n  (Non-interactive session detected — running comparison "
+                  "automatically without prompting.)")
+        should_compare = True
+    else:
+        if len(evaluated_models) == 1:
+            prompt = (
+                f"Only one model ({evaluated_models[0]}) was trained. "
+                f"Run physics-aware comparison (Gaussian-smoothed MSE + sample plots)?"
+            )
+        else:
+            prompt = (
+                f"Run comparison across {evaluated_models}? "
+                f"This produces MSE/R² charts, per-sample plots, metrics.csv, and summary.txt."
+            )
+        should_compare = confirm(prompt)
+
+    if not should_compare:
         print("\n  Skipping comparison. You can run it later with:")
         print(f"\n    python3 -m src.cli.compare_experiment \\")
         print(f"        --experiment-dir {experiment_dir} \\")

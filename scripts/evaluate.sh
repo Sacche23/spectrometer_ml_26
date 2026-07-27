@@ -1,12 +1,13 @@
 #!/bin/bash
-#SBATCH --job-name=eval_cnn2
-#SBATCH --partition=gpu
-#SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=2G
-#SBATCH --time=02:00:00
+#SBATCH --job-name=eval_model
 #SBATCH --output=logs/%j.out
 #SBATCH --error=logs/%j.err
+#SBATCH --partition=day
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=8G
+#SBATCH --time=08:00:00
+#SBATCH --mail-type=END,FAIL
+#SBATCH --mail-user=diego.sacchettoni@yale.edu
 
 
 python3 -m src.cli.evaluate \
