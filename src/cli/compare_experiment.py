@@ -1,3 +1,4 @@
+# compare_experiment
 import numpy as np
 import torch
 import argparse
@@ -45,6 +46,35 @@ def MSE(pred, gt, low_idx, high_idx):
     diff_squared = [(pred[i] - gt[i]) ** 2 for i in range(low_idx, high_idx)]
     return np.mean(diff_squared)
 
+
+def spectral_angle(pred: np.ndarray, gt: np.ndarray) -> float:
+    """
+    Spectral Angle Mapper (SAM) — measures the angle between two
+    spectrum vectors in degrees. 0° means perfect match regardless
+    of scale; 90° means completely orthogonal (worst case).
+    Works on raw numpy arrays.
+    """
+    pred = pred.flatten()
+    gt   = gt.flatten()
+    dot  = np.dot(pred, gt)
+    norm = np.linalg.norm(pred) * np.linalg.norm(gt)
+    if norm == 0:
+        return 0.0
+    cos_theta = np.clip(dot / norm, -1.0, 1.0)
+    return float(np.degrees(np.arccos(cos_theta)))
+
+
+def peak_wavelength_error(pred: np.ndarray, gt: np.ndarray,
+                          wl_grid: np.ndarray) -> float:
+    """
+    Finds the wavelength of the brightest peak in each spectrum
+    and returns the absolute difference in µm.
+    wl_grid: 1D array of wavelength values in metres,
+             same length as pred and gt.
+    """
+    pred_peak_um = wl_grid[np.argmax(pred)] * 1e6   # convert m → µm
+    gt_peak_um   = wl_grid[np.argmax(gt)]   * 1e6
+    return float(abs(pred_peak_um - gt_peak_um))
 
 def dataset_to_numpy(ds):
     """Load an entire dataset split into numpy arrays in one shot."""
@@ -243,6 +273,8 @@ def main():
     # Accumulators: one entry per model
     mse_totals = {m: 0.0 for m in loaded_models}
     sse        = {m: 0.0 for m in loaded_models}
+    sam_totals = {m: 0.0 for m in loaded_models}  
+    pwe_totals = {m: 0.0 for m in loaded_models}  
     sst_total  = 0.0
 
     # Output folder for per-sample plots
@@ -276,6 +308,16 @@ def main():
             resid = smoothed[model_name][low_idx:high_idx] - y_gt_g[low_idx:high_idx]
             sse[model_name] += np.sum(resid ** 2)
 
+            sam_totals[model_name] += spectral_angle(
+            smoothed[model_name][low_idx:high_idx],
+            y_gt_g[low_idx:high_idx]
+            )
+            
+            scored_cont = cont_vals[low_idx:high_idx]
+            pred_peak_um = scored_cont[np.argmax(smoothed[model_name][low_idx:high_idx])] * 1e6
+            gt_peak_um   = scored_cont[np.argmax(y_gt_g[low_idx:high_idx])]               * 1e6
+            pwe_totals[model_name] += abs(pred_peak_um - gt_peak_um)
+
         diff_gt = y_gt_g[low_idx:high_idx] - np.mean(y_gt_g[low_idx:high_idx])
         sst_total += np.sum(diff_gt ** 2)
 
@@ -302,16 +344,21 @@ def main():
     n = len(S_val)
     avg_mse = {m: mse_totals[m] / n         for m in loaded_models}
     r2      = {m: 1 - sse[m] / sst_total    for m in loaded_models}
+    avg_sam = {m: sam_totals[m] / n         for m in loaded_models}   
+    avg_pwe = {m: pwe_totals[m] / n         for m in loaded_models}   
 
-    print("\n" + "=" * 50)
+    print("\n" + "=" * 68)
     print("COMPARISON SUMMARY")
-    print("=" * 50)
-    print(f"{'Model':<12}  {'Avg MSE':>12}  {'R²':>8}  {'Best Epoch':>10}")
-    print("-" * 50)
+    print("=" * 68)
+    print(f"{'Model':<12}  {'Avg MSE':>12}  {'R²':>8}  {'SAM (°)':>9}  {'PWE (µm)':>10}  {'Best Epoch':>10}")
+    print("-" * 68)
     for model_name in loaded_models:
         print(f"{model_name:<12}  {avg_mse[model_name]:>12.4e}  "
-              f"{r2[model_name]:>8.4f}  {model_results[model_name]['epoch']:>10}")
-    print("=" * 50)
+            f"{r2[model_name]:>8.4f}  "
+            f"{avg_sam[model_name]:>9.3f}  "
+            f"{avg_pwe[model_name]:>10.4f}  "
+            f"{model_results[model_name]['epoch']:>10}")
+    print("=" * 68)
 
     # ------------------------------------------------------------------
     # Save metrics.json
@@ -330,6 +377,8 @@ def main():
                 "best_epoch": model_results[model_name]["epoch"],
                 "avg_mse": avg_mse[model_name],
                 "r2": r2[model_name],
+                "avg_sam_deg": avg_sam[model_name],
+                "avg_pwe_um":  avg_pwe[model_name],
             }
             for model_name in loaded_models
         }
@@ -346,14 +395,17 @@ def main():
 
     csv_path = comparison_dir / "metrics.csv"
     with open(csv_path, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=["model", "avg_mse", "r2", "best_epoch"])
+        writer = csv.DictWriter(f, fieldnames=[
+            "model", "avg_mse", "r2", "avg_sam_deg", "avg_pwe_um", "best_epoch"])        
         writer.writeheader()
         for model_name in loaded_models:
             writer.writerow({
-                "model":      model_name,
-                "avg_mse":    avg_mse[model_name],
-                "r2":         r2[model_name],
-                "best_epoch": model_results[model_name]["epoch"],
+                "model":       model_name,
+                "avg_mse":     avg_mse[model_name],
+                "r2":          r2[model_name],
+                "avg_sam_deg": avg_sam[model_name],
+                "avg_pwe_um":  avg_pwe[model_name],
+                "best_epoch":  model_results[model_name]["epoch"],
             })
     print(f"Saved CSV to {csv_path}")
 
@@ -361,11 +413,14 @@ def main():
     # Comparison bar chart
     # ------------------------------------------------------------------
 
-    fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+    fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+    axes = axes.flatten()
 
     models_list = loaded_models
     mse_vals    = [avg_mse[m] for m in models_list]
     r2_vals     = [r2[m]      for m in models_list]
+    sam_vals    = [avg_sam[m] for m in models_list]
+    pwe_vals    = [avg_pwe[m] for m in models_list]
     colors      = plt.cm.tab10.colors[:len(models_list)]
 
     axes[0].bar(models_list, mse_vals, color=colors)
@@ -378,6 +433,14 @@ def main():
     axes[1].set_ylabel("R²")
     axes[1].set_xlabel("Model")
     axes[1].set_ylim(min(0, min(r2_vals)) - 0.05, 1.05)
+
+    axes[2].bar(models_list, sam_vals, color=colors)
+    axes[2].set_title("Avg SAM in degrees (lower is better)")
+    axes[2].set_ylabel("SAM (°)")
+
+    axes[3].bar(models_list, pwe_vals, color=colors)
+    axes[3].set_title("Avg Peak Wavelength Error (lower is better)")
+    axes[3].set_ylabel("PWE (µm)")
 
     fig.suptitle(f"Model Comparison — {args.dataset}, seed {args.seed}", fontsize=12)
     fig.tight_layout()
@@ -406,12 +469,15 @@ def main():
         f.write(f"Noise std  : {args.noise_std}\n")
         f.write(f"Normalized : {args.normalize}\n")
         f.write(f"Scored range: {x_meas_low*1e6:.1f}-{x_meas_high*1e6:.1f} um\n\n")
-        f.write(f"{'Model':<12}  {'Avg MSE':>12}  {'R^2':>8}  {'Best Epoch':>10}\n")
-        f.write("-" * 50 + "\n")
+        f.write(f"{'Model':<12}  {'Avg MSE':>12}  {'R^2':>8}  "
+                f"{'SAM(deg)':>10}  {'PWE(um)':>9}  {'Best Epoch':>10}\n")
+        f.write("-" * 70 + "\n")
         for model_name in loaded_models:
             f.write(f"{model_name:<12}  {avg_mse[model_name]:>12.4e}  "
-                    f"{r2[model_name]:>8.4f}  {model_results[model_name]['epoch']:>10}\n")
-
+                    f"{r2[model_name]:>8.4f}  "
+                    f"{avg_sam[model_name]:>10.3f}  "
+                    f"{avg_pwe[model_name]:>9.4f}  "
+                    f"{model_results[model_name]['epoch']:>10}\n")
         best = min(loaded_models, key=lambda m: avg_mse[m])
         f.write(f"\nBest model by MSE: {best}\n")
 
