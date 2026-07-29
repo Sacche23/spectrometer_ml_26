@@ -1,5 +1,6 @@
 # train.py
 import argparse
+import os
 import torch
 from torch.utils.data import DataLoader
 from src.datasets.registry import get_dataset, DATASET_REGISTRY
@@ -13,7 +14,6 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import json
 import shutil
-
 
 def train(
         experiment_dir: str|None,
@@ -188,8 +188,8 @@ def train(
     for epoch in range(start_epoch, num_epochs + 1):
         model.train()
         running_loss = 0.0
-
-        # print(epoch)
+        
+        print(f"Epoch: {epoch}\n")
 
         for batch_idx, (currents, spectra) in enumerate(train_loader, start=1):
             currents = currents.to(device, non_blocking=True)
@@ -330,6 +330,23 @@ if __name__=="__main__":
     parser.add_argument('--resume', type=str, default=None, help='Path to a .pth checkpoint to resume training from')
 
     args = parser.parse_args()
+
+    # ------------------------------------------------------------------
+    # Step 0 — Allocate CPU resources correctly
+    # ------------------------------------------------------------------
+    # Read the CPU count from the SLURM environment variable if available,
+    # otherwise fall back to os.cpu_count() 
+    num_threads = int(os.environ.get("SLURM_CPUS_PER_TASK", os.cpu_count()))
+
+    torch.set_num_threads(num_threads)
+
+    # This second line covers a different thread pool — PyTorch uses one pool
+    # for intra-operation parallelism (set above) and another for running
+    # multiple operations simultaneously. On CPU training you want both
+    # to use your full allocation.
+    torch.set_num_interop_threads(num_threads)
+
+    print(f"PyTorch threads: {torch.get_num_threads()} intra, {torch.get_num_interop_threads()} interop")
 
 
     train(experiment_dir=args.experiment_dir,

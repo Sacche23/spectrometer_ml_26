@@ -270,31 +270,31 @@ class UNet1DBhatti(nn.Module):
 
         # --- Contracting path (encoder) ---
         # Stage 1: no downsampling, establishes base feature maps
-        self.enc1 = self._residual_block(1, 64, stride=1)
+        self.enc1 = self._residual_block(1, 8, stride=1)
 
         # Stages 2-5: each halves the sequence length and doubles channels
         # stride=2 in the Conv replaces MaxPool
-        self.enc2 = self._residual_block(64, 128, stride=2)
-        self.enc3 = self._residual_block(128, 256, stride=2)
-        self.enc4 = self._residual_block(256, 512, stride=2)
-        self.enc5 = self._residual_block(512, 1024, stride=2)  # bottleneck
+        self.enc2 = self._residual_block(8, 16, stride=2)
+        self.enc3 = self._residual_block(16, 32, stride=2)
+        self.enc4 = self._residual_block(32, 64, stride=2)
+        self.enc5 = self._residual_block(64, 128, stride=2)  # bottleneck
 
         # --- Expansive path (decoder) ---
         # Each stage: upsample → concatenate skip → residual block
-        self.up4 = nn.ConvTranspose1d(1024, 512, kernel_size=2, stride=2)
-        self.dec4 = self._residual_block(1024, 512, stride=1)  # 1024 due to concat
+        self.up4 = nn.ConvTranspose1d(128, 64, kernel_size=2, stride=2)
+        self.dec4 = self._residual_block(128, 64, stride=1)  # 128 due to concat
 
-        self.up3 = nn.ConvTranspose1d(512, 256, kernel_size=2, stride=2)
-        self.dec3 = self._residual_block(512, 256, stride=1)
+        self.up3 = nn.ConvTranspose1d(64, 32, kernel_size=2, stride=2)
+        self.dec3 = self._residual_block(64, 32, stride=1)
 
-        self.up2 = nn.ConvTranspose1d(256, 128, kernel_size=2, stride=2)
-        self.dec2 = self._residual_block(256, 128, stride=1)
+        self.up2 = nn.ConvTranspose1d(32, 16, kernel_size=2, stride=2)
+        self.dec2 = self._residual_block(32, 16, stride=1)
 
-        self.up1 = nn.ConvTranspose1d(128, 64, kernel_size=2, stride=2)
-        self.dec1 = self._residual_block(128, 64, stride=1)
+        self.up1 = nn.ConvTranspose1d(16, 8, kernel_size=2, stride=2)
+        self.dec1 = self._residual_block(16, 8, stride=1)
 
-        # Final conv: maps 64 feature maps back to 1 channel (the spectrum)
-        self.final_conv = nn.Conv1d(64, 1, kernel_size=1)
+        # Final conv: maps 8 feature maps back to 1 channel (the spectrum)
+        self.final_conv = nn.Conv1d(8, 1, kernel_size=1)
 
     def _residual_block(self, in_channels, out_channels, stride=1):
         """
@@ -331,11 +331,11 @@ class UNet1DBhatti(nn.Module):
         h = x_expanded.unsqueeze(1)
 
         # Step 2: Contracting path (save each stage for skip connections)
-        e1 = self.enc1(h)   # [batch, 64,   L]
-        e2 = self.enc2(e1)  # [batch, 128,  L/2]
-        e3 = self.enc3(e2)  # [batch, 256,  L/4]
-        e4 = self.enc4(e3)  # [batch, 512,  L/8]
-        e5 = self.enc5(e4)  # [batch, 1024, L/16] — bottleneck
+        e1 = self.enc1(h)   # [batch, 8,   L]
+        e2 = self.enc2(e1)  # [batch, 16,  L/2]
+        e3 = self.enc3(e2)  # [batch, 32,  L/4]
+        e4 = self.enc4(e3)  # [batch, 64,  L/8]
+        e5 = self.enc5(e4)  # [batch, 128, L/16] — bottleneck
 
         # Step 3: Expansive path with skip connections
         # After each upsample, concatenate with corresponding encoder output,
@@ -356,8 +356,23 @@ class UNet1DBhatti(nn.Module):
         d1 = self._pad_to_match(d1, e1)
         d1 = self.dec1(torch.cat([d1, e1], dim=1))
 
-        # Final conv: [batch, 64, L] → [batch, 1, L] → [batch, L]
+        # Final conv: [batch, 8, L] → [batch, 1, L] → [batch, L]
         unet_out = self.final_conv(d1).squeeze(1)
+
+        # DEBUG SHIT:
+        if not hasattr(self, "_printed_shapes"):
+            print("expanded:", h.shape)
+            print("e1:", e1.shape)
+            print("e2:", e2.shape)
+            print("e3:", e3.shape)
+            print("e4:", e4.shape)
+            print("e5:", e5.shape)
+            print("d4:", d4.shape)
+            print("d3:", d3.shape)
+            print("d2:", d2.shape)
+            print("d1:", d1.shape)
+            self._printed_shapes = True
+
         
         # Step 4: Global residual
         # "the output signal and extended intensities were added"
@@ -380,8 +395,7 @@ class ResidualBlock1D(nn.Module):
     Main:     Conv(k=3, stride) → BaN → ReLU → Conv(k=3) → BaN
     Shortcut: Conv(k=1, stride) → BaN   ← matches dimensions
 
-    This is exactly the pattern described in the paper's
-    DL-architecture section and references He et al. (ref 63).
+    The two branches are summed, followed by a ReLU activation.
     """
     def __init__(self, in_channels, out_channels, stride=1):
         super().__init__()
