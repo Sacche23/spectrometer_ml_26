@@ -20,7 +20,7 @@ export OPENBLAS_NUM_THREADS=8
 export TORCH_NUM_THREADS=8   
 
 python3 -m src.cli.run_experiment \
-    --models unet \
+    --models cui_mlp_v2_1024_1024 cnn2 \
     --dataset rand_sop \
     --seed 42 \
     --batch-size 64 \

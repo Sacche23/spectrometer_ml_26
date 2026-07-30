@@ -249,6 +249,7 @@ class SpectrumDNN(nn.Module):
 class UNet1DBhatti(nn.Module):
     """
     1D U-Net following Bhatti et al. (2025).
+    Dimensions toned down to be more lightweight
 
     Key features vs. a plain U-Net:
     1. Dense pre-expansion: maps input to output_dim before U-Net
@@ -256,6 +257,7 @@ class UNet1DBhatti(nn.Module):
     3. Strided Conv for downsampling (not MaxPool)
     4. Standard ConvTranspose + concatenate + residual block in expansive path
     5. Global residual: U-Net output + pre-expanded input
+    * Note: Paper states a 50% dropout rate but not where in the architecture, assumed to be at the bottleneck
     """
 
     def __init__(self, input_dim, output_dim):
@@ -278,6 +280,7 @@ class UNet1DBhatti(nn.Module):
         self.enc3 = self._residual_block(16, 32, stride=2)
         self.enc4 = self._residual_block(32, 64, stride=2)
         self.enc5 = self._residual_block(64, 128, stride=2)  # bottleneck
+        self.dropout = nn.Dropout1d(p=0.2) # 0.5 in the paper
 
         # --- Expansive path (decoder) ---
         # Each stage: upsample → concatenate skip → residual block
@@ -336,6 +339,7 @@ class UNet1DBhatti(nn.Module):
         e3 = self.enc3(e2)  # [batch, 32,  L/4]
         e4 = self.enc4(e3)  # [batch, 64,  L/8]
         e5 = self.enc5(e4)  # [batch, 128, L/16] — bottleneck
+        e5 = self.dropout(e5) # Dropout 20%
 
         # Step 3: Expansive path with skip connections
         # After each upsample, concatenate with corresponding encoder output,
