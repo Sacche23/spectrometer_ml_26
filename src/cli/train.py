@@ -269,7 +269,8 @@ def train(
             with torch.no_grad():
                 y_pred = model(xb)
 
-            n_plots = 16
+            n_plots = min(16, yb.shape[0])
+            
             fig, axes = plt.subplots(4, 4, figsize=(16, 12), sharex=True, sharey=True)
             axes = axes.flatten()
 
@@ -279,6 +280,10 @@ def train(
                 ax.plot(y_pred[i].cpu().numpy(), label="Pred")
                 ax.set_title(f"#{i}")
                 ax.axis("off")
+
+            # Hide unused axes if the batch has fewer than 16 samples
+            for i in range(n_plots, len(axes)):
+                axes[i].axis("off")
 
             fig.tight_layout()
             writer.add_figure("Predictions/val_grid", fig, epoch)
