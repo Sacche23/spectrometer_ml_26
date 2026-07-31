@@ -1,10 +1,11 @@
 #!/bin/bash
-#SBATCH --job-name=run_experiment_unet
+#SBATCH --job-name=unet_factory_test
 #SBATCH --output=logs/%j.out
 #SBATCH --error=logs/%j.err
-#SBATCH --partition=day
+#SBATCH --partition=gpu
+#SBATCH --gpus=rtx_5000_ada:1
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=4G
+#SBATCH --mem=16G
 #SBATCH --time=24:00:00
 #SBATCH --mail-type=END,FAIL
 #SBATCH --mail-user=diego.sacchettoni@yale.edu
@@ -14,24 +15,31 @@ module load miniconda
 
 conda activate cenv
 
-export OMP_NUM_THREADS=8
-export MKL_NUM_THREADS=8
-export OPENBLAS_NUM_THREADS=8
-export TORCH_NUM_THREADS=8   
+export OMP_NUM_THREADS=8  
 
 python3 -m src.cli.run_experiment \
-    --models cui_mlp_v2_1024_1024 cnn2 \
+    --models \
+        unet_8_0.2 \
+        unet_8_0.35 \
+        unet_8_0.5 \
+        unet_16_0.2 \
+        unet_16_0.35 \
+        unet_16_0.5 \
+        unet_32_0.2 \
+        unet_32_0.35 \
+        unet_32_0.5 \
     --dataset rand_sop \
     --seed 42 \
     --batch-size 64 \
-    --num-epochs 100 \
-    --learning-rate 1e-3 \
+    --num-epochs 1 \
+    --learning-rate 5e-4 \
     --learning-rate-decay 0.6 \
-    --learning-rate-period 50 \
+    --learning-rate-period 200 \
     --gaussian-noise True \
     --gaussian-noise-std 1e-4 \
-    --validation-size 200 \
-    --num-workers 0 \
-    --device cpu \
+    --validation-size 500 \
+    --num-workers 8 \
+    --device cuda \
+    --experiment-dir experiments/unet_grid_analysis_debug \
     --responsivity data/responsivity_data/processed/responsivity.npy \
     "$@"
