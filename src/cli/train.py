@@ -53,6 +53,10 @@ def train(
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
+    if device.type == "cuda":
+        print("GPU:", torch.cuda.get_device_name(0))
+        torch.backends.cudnn.benchmark = True # Enable bench-marking for cuDNN (good for fixed-size inputs)    
+
     # DATASET AND DATALOADER
 
     DSClass = get_dataset(dataset_name)
@@ -78,8 +82,20 @@ def train(
         [train_size, val_size],
         generator=torch.Generator().manual_seed(seed) # for reproducibility
     )
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True,  num_workers=num_workers, pin_memory=(device.type=="cuda"))
-    val_loader   = DataLoader(val_ds,   batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=(device.type=="cuda"))
+    train_loader = DataLoader(
+        train_ds, 
+        batch_size=batch_size, 
+        shuffle=True,  
+        num_workers=num_workers, 
+        persistent_workers=num_workers > 0, 
+        pin_memory=(device.type=="cuda"))
+    val_loader   = DataLoader(
+        val_ds,   
+        batch_size=batch_size, 
+        shuffle=False, 
+        num_workers=num_workers,
+        persistent_workers=num_workers > 0,  
+        pin_memory=(device.type=="cuda"))
 
     # MODEL
 
@@ -215,8 +231,8 @@ def train(
         val_loss = 0.0
         with torch.no_grad():
             for currents, spectra in val_loader:
-                currents = currents.to(device).float()
-                spectra  = spectra.to(device).float()
+                currents = currents.to(device, non_blocking=True).float()
+                spectra  = spectra.to(device, non_blocking=True).float()
                 preds    = model(currents)
                 val_loss += criterion(preds, spectra).item() * currents.size(0)
         val_loss = val_loss / val_size
@@ -270,7 +286,7 @@ def train(
                 y_pred = model(xb)
 
             n_plots = min(16, yb.shape[0])
-            
+
             fig, axes = plt.subplots(4, 4, figsize=(16, 12), sharex=True, sharey=True)
             axes = axes.flatten()
 

@@ -130,6 +130,10 @@ def main():
              torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Using device:", device)
 
+    if device.type == "cuda":
+            print("GPU:", torch.cuda.get_device_name(0))
+            torch.backends.cudnn.benchmark = True # Enable bench-marking for cuDNN (good for fixed-size inputs)    
+
     # DATASET AND DATALOADER
     DS = get_dataset(args.dataset)
     full_ds = DS(
@@ -152,11 +156,17 @@ def main():
         [train_n, args.val_size],
         generator=torch.Generator().manual_seed(args.seed)
     )
-    train_loader = DataLoader(train_ds, batch_size=len(train_ds),
-                              shuffle=False, num_workers=args.num_workers,
+    train_loader = DataLoader(train_ds, 
+                              batch_size=len(train_ds),
+                              shuffle=False, 
+                              num_workers=args.num_workers,
+                              persistent_workers=args.num_workers > 0, 
                               pin_memory=(device.type=="cuda"))
-    val_loader   = DataLoader(val_ds,   batch_size=len(val_ds),
-                              shuffle=False, num_workers=args.num_workers,
+    val_loader   = DataLoader(val_ds,   
+                              batch_size=len(val_ds),
+                              shuffle=False, 
+                              num_workers=args.num_workers,
+                              persistent_workers=args.num_workers > 0, 
                               pin_memory=(device.type=="cuda"))
 
     # MODEL
