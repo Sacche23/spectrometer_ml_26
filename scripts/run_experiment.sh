@@ -11,11 +11,8 @@
 #SBATCH --mail-user=diego.sacchettoni@yale.edu
 
 module reset
-module load miniconda
 
-conda activate cenv
-
-export OMP_NUM_THREADS=8  
+source ~/venvs/spectro/bin/activate
 
 python3 -m src.cli.run_experiment \
     --models \

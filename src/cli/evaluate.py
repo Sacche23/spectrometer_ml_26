@@ -157,13 +157,13 @@ def main():
         generator=torch.Generator().manual_seed(args.seed)
     )
     train_loader = DataLoader(train_ds, 
-                              batch_size=len(train_ds),
+                              batch_size=args.batch_size,
                               shuffle=False, 
                               num_workers=args.num_workers,
                               persistent_workers=args.num_workers > 0, 
                               pin_memory=(device.type=="cuda"))
     val_loader   = DataLoader(val_ds,   
-                              batch_size=len(val_ds),
+                              batch_size=args.batch_size,
                               shuffle=False, 
                               num_workers=args.num_workers,
                               persistent_workers=args.num_workers > 0, 
