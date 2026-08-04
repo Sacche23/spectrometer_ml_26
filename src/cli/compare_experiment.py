@@ -82,6 +82,22 @@ def dataset_to_numpy(ds):
     x_tensor, y_tensor = next(iter(loader))
     return x_tensor.detach().cpu().numpy(), y_tensor.detach().cpu().numpy()
 
+def smooth_batch(wl, spectra, lam_cont):
+    """
+    Apply gaussian_smooth() to every spectrum in a batch.
+
+    Parameters:
+        wl:       wavelength grid (output_dim,)
+        spectra:  spectra array (N, output_dim)
+        lam_cont: continuous wavelength grid
+
+    Returns:
+        smoothed spectra array (N, len(lam_cont))
+    """
+    return np.array([
+        gaussian_smooth(wl, spectrum, lam_cont)
+        for spectrum in spectra
+    ])
 
 def load_model(model_name, checkpoint_path, input_dim, output_dim, device):
     """
@@ -220,6 +236,22 @@ def main():
     output_dim = S_val.shape[1]
     x_all = torch.from_numpy(I_eval).float().to(device)
 
+    # ------------------------------------------------------------------
+    # Continuous wavelength grid for Gaussian-smoothed evaluation
+    # ------------------------------------------------------------------
+
+    num_cont_bins = 10000
+    x_low,      x_high      = 1e-6, 9.5e-6   # full grid: 1 to 9.5 µm
+    x_meas_low, x_meas_high = 2e-6, 9e-6     # scored range: 2 to 9 µm
+
+    cont_vals = np.linspace(x_low, x_high, num_cont_bins)
+    rnge      = x_high - x_low
+    low_idx   = int(((x_meas_low  - x_low) / rnge) * num_cont_bins) + 1  # inclusive
+    high_idx  = int(((x_meas_high - x_low) / rnge) * num_cont_bins)      # exclusive
+
+    wl_full = np.linspace(x_low, x_high, output_dim)
+    S_val_smoothed = smooth_batch(wl_full, S_val, cont_vals)
+
     # results dict: model_name -> {"predictions": np.array, "epoch": int}
     model_results = {}
 
@@ -240,8 +272,11 @@ def main():
         with torch.no_grad():
             preds = model(x_all).cpu().numpy()
 
+        preds_smoothed = smooth_batch(wl_full, preds, cont_vals)
+
         model_results[model_name] = {
             "predictions": preds,
+            "predictions_smoothed": preds_smoothed,
             "epoch": epoch,
         }
 
@@ -251,20 +286,6 @@ def main():
     loaded_models = list(model_results.keys())
     print(f"\nComparing: {loaded_models}")
 
-    # ------------------------------------------------------------------
-    # Continuous wavelength grid for Gaussian-smoothed evaluation
-    # ------------------------------------------------------------------
-
-    num_cont_bins = 10000
-    x_low,      x_high      = 1e-6, 9.5e-6   # full grid: 1 to 9.5 µm
-    x_meas_low, x_meas_high = 2e-6, 9e-6     # scored range: 2 to 9 µm
-
-    cont_vals = np.linspace(x_low, x_high, num_cont_bins)
-    rnge      = x_high - x_low
-    low_idx   = int(((x_meas_low  - x_low) / rnge) * num_cont_bins) + 1  # inclusive
-    high_idx  = int(((x_meas_high - x_low) / rnge) * num_cont_bins)      # exclusive
-
-    wl_full = np.linspace(x_low, x_high, output_dim)
 
     # ------------------------------------------------------------------
     # Per-sample scoring
@@ -286,14 +307,16 @@ def main():
 
     for i in range(len(S_val)):
 
+        if i % 50 == 0:
+            print(f"Processed {i}/{len(S_val)} samples")
+
         # Ground truth smoothed
-        y_gt_g = gaussian_smooth(wl_full, S_val[i], cont_vals)
+        y_gt_g = S_val_smoothed[i]
 
         # Each model's smoothed prediction
         smoothed = {}
         for model_name in loaded_models:
-            y_g = gaussian_smooth(wl_full, model_results[model_name]["predictions"][i], cont_vals)
-            smoothed[model_name] = y_g
+            smoothed[model_name] = model_results[model_name]["predictions_smoothed"][i]
 
         # Normalize all curves to unit mean over the scored range so that
         # MSE reflects shape similarity, not absolute scale differences.

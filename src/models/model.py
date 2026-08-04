@@ -364,21 +364,6 @@ class UNet1DBhatti(nn.Module):
 
         # Final conv: [batch, 8, L] → [batch, 1, L] → [batch, L]
         unet_out = self.final_conv(d1).squeeze(1)
-
-        # DEBUG SHIT:
-        if not hasattr(self, "_printed_shapes"):
-            print("expanded:", h.shape)
-            print("e1:", e1.shape)
-            print("e2:", e2.shape)
-            print("e3:", e3.shape)
-            print("e4:", e4.shape)
-            print("e5:", e5.shape)
-            print("d4:", d4.shape)
-            print("d3:", d3.shape)
-            print("d2:", d2.shape)
-            print("d1:", d1.shape)
-            self._printed_shapes = True
-
         
         # Step 4: Global residual
         # "the output signal and extended intensities were added"
@@ -502,13 +487,13 @@ class SpectrumDNN(nn.Module):
     def __init__(self, input_dim, output_dim):
         super().__init__()
 
-        self.fc1 = nn.Linear(input_dim, 256)
-        self.bn1 = nn.BatchNorm1d(256)
+        self.fc1 = nn.Linear(input_dim, 1024)
+        self.bn1 = nn.BatchNorm1d(1024)
 
-        self.fc2 = nn.Linear(256, 256)
-        self.bn2 = nn.BatchNorm1d(256)
+        self.fc2 = nn.Linear(1024, 1024)
+        self.bn2 = nn.BatchNorm1d(1024)
 
-        self.fc3 = nn.Linear(256, output_dim)
+        self.fc3 = nn.Linear(1024, output_dim)
         
         # GELU activation
         self.gelu = nn.GELU()
@@ -672,22 +657,7 @@ def make_unet(n_channels: int, dropout_rate: float):
     
             # Final conv: [batch, n_ch , L] → [batch, 1, L] → [batch, L]
             unet_out = self.final_conv(d1).squeeze(1)
-    
-            # DEBUG SHIT:
-            if not hasattr(self, "_printed_shapes"):
-                print("expanded:", h.shape)
-                print("e1:", e1.shape)
-                print("e2:", e2.shape)
-                print("e3:", e3.shape)
-                print("e4:", e4.shape)
-                print("e5:", e5.shape)
-                print("d4:", d4.shape)
-                print("d3:", d3.shape)
-                print("d2:", d2.shape)
-                print("d1:", d1.shape)
-                self._printed_shapes = True
-    
-            
+
             # Step 4: Global residual
             # "the output signal and extended intensities were added"
             # This means the U-Net only needs to learn the correction,

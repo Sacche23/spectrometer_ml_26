@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=unet_factory_test
+#SBATCH --job-name=unet_grid_analysis
 #SBATCH --output=logs/%j.out
 #SBATCH --error=logs/%j.err
 #SBATCH --partition=gpu
@@ -28,15 +28,15 @@ python3 -m src.cli.run_experiment \
     --dataset rand_sop \
     --seed 42 \
     --batch-size 64 \
-    --num-epochs 1 \
+    --num-epochs 1000 \
     --learning-rate 5e-4 \
     --learning-rate-decay 0.6 \
     --learning-rate-period 200 \
     --gaussian-noise True \
     --gaussian-noise-std 1e-4 \
-    --validation-size 500 \
+    --validation-size 50 \
     --num-workers 8 \
     --device cuda \
-    --experiment-dir experiments/unet_grid_analysis_debug \
+    --experiment-dir experiments/unet_grid_analysis \
     --responsivity data/responsivity_data/processed/responsivity.npy \
     "$@"
