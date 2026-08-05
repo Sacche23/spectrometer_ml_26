@@ -272,6 +272,10 @@ def main():
         with torch.no_grad():
             preds = model(x_all).cpu().numpy()
 
+        # Explicitly free GPU memory before loading next model
+        del model
+        torch.cuda.empty_cache()
+
         preds_smoothed = smooth_batch(wl_full, preds, cont_vals)
 
         model_results[model_name] = {
