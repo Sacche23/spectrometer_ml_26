@@ -86,8 +86,6 @@ def sum_of_peaks_823(
     rng: np.random.Generator,
     num_spectra: int,
     num_points: int,
-    low: float = 2.5,
-    high: float = 9.5,
     lam: float = 4.0,
     width_frac: tuple[float, float] = (0.005, 0.02),
     noise_std: float = 0.0,
@@ -99,7 +97,15 @@ def sum_of_peaks_823(
     NIST dataset, the # of points should be 823
     """
     # build wavelength axis
-    wavelengths = np.linspace(low, high, num_points)
+    # Use the EXACT grid that crop_responsivity.py produced, so S and R
+    # refer to the same physical wavelengths row-for-row.
+    wavelengths = np.load("data/responsivity_data/processed/cropped_2p5_9p5/wavelengths_823_um.npy")    
+    assert len(wavelengths) == num_points, (
+        f"num_points ({num_points}) doesn't match the saved grid length ({len(wavelengths)})"
+    )
+
+    low  = float(wavelengths.min()) # ~2.5µm
+    high = float(wavelengths.max()) # ~9.5µm
     span = high - low
 
     data = np.zeros((num_spectra, num_points), dtype=float)
@@ -146,14 +152,20 @@ def nist_dataset(
     """
     files = list_parquet_files("data/spectra_data/raw/nist/IR_data_chunk*_of_009.parquet")
 
-    # Build target λ-grid (inclusive endpoints). Change low_um=2.5 if you want to drop sub-2.5 entirely.
-    lam_grid_um = build_lambda_grid_um(num_points, low_um=2.5, high_um=9.5)
+    # Build target λ-grid (inclusive endpoints). 
+    # Use the EXACT grid that crop_responsivity.py produced, so S and R
+    # refer to the same physical wavelengths row-for-row.
+    lam_grid_um = np.load("data/responsivity_data/processed/cropped_2p5_9p5/wavelengths_823_um.npy")
+    assert len(lam_grid_um) == num_points, (
+        f"num_points ({num_points}) doesn't match the saved grid length ({len(lam_grid_um)})"
+    )
+
     # Debug
     print(lam_grid_um[:5])
     print("...")
     print(lam_grid_um[-5:])
     print("Grid length:", len(lam_grid_um))
-    
+
     # 1) Count total rows across files (lightweight; metadata only)
     total, counts = _total_rows(files)
 
