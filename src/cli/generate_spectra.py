@@ -1,3 +1,5 @@
+# generate_spectra.py
+
 import numpy as np
 import pandas as pd
 import os
@@ -5,6 +7,7 @@ from pathlib import Path
 import argparse
 import json
 from datetime import datetime
+import matplotlib.pyplot as plt
 
 # Imports
 from src.datasets.utils.nist_utils import (
@@ -16,13 +19,15 @@ from src.datasets.utils.nist_utils import (
     stream_selected_rows_from_parquet,
 )
 
-VALID_METHODS = {"rand_sop", "uniform", "NIST", "custom1"}
+VALID_METHODS = {"rand_sop", "rand_sop_823", "uniform", "NIST", "custom1"}
 
 def generate_S(rng: np.random.Generator, n_samples: int, s_dim : int, method : str):
     if method == "uniform":
         return rng.uniform(size=(n_samples, s_dim)).astype(float)
     elif method == "rand_sop":
         return sum_of_peaks(rng, n_samples, s_dim)
+    elif method == "rand_sop_823":
+        return sum_of_peaks_823(rng, n_samples, s_dim)
     elif method == "NIST":
         return nist_dataset(n_samples, s_dim)
     elif method == "custom1":
@@ -77,6 +82,50 @@ def sum_of_peaks(
 
     return data
 
+def sum_of_peaks_823(
+    rng: np.random.Generator,
+    num_spectra: int,
+    num_points: int,
+    low: float = 2.5,
+    high: float = 9.5,
+    lam: float = 4.0,
+    width_frac: tuple[float, float] = (0.005, 0.02),
+    noise_std: float = 0.0,
+    baseline_std: float = 0.001):
+    """
+    Generate spectra as a sum of N Gaussian peaks (N ~ ZTPoisson(lam)),
+    then add a linear baseline + noise and normalize to unit RMS.
+    To match the spacing of rand_sop 1000 and the lowest wavelength of the
+    NIST dataset, the # of points should be 823
+    """
+    # build wavelength axis
+    wavelengths = np.linspace(low, high, num_points)
+    span = high - low
+
+    data = np.zeros((num_spectra, num_points), dtype=float)
+    for i in range(num_spectra):
+        # number of peaks
+        Np = 0
+        while Np == 0:
+            Np = rng.poisson(lam) #zero-truncated poission
+        # add peaks
+        for _ in range(Np):
+            center = rng.uniform(low, high)
+            width  = rng.uniform(width_frac[0]*span, width_frac[1]*span)
+            amp    = rng.lognormal(mean=0.0, sigma=1.0)
+            data[i] += amp * np.exp(-(wavelengths - center)**2 / (2 * width**2))
+        # linear baseline
+        b0 = rng.normal(0.0, baseline_std)
+        b1 = rng.normal(0.0, baseline_std)
+        data[i] += b0 + b1 * (wavelengths - (low + span/2))
+        # white noise
+        data[i] += rng.normal(0.0, noise_std, size=num_points)
+        # normalize to unit RMS
+        rms = np.sqrt(np.mean(data[i]**2))
+        data[i] /= (rms + 1e-6)
+
+    return data
+
 # ====================================================================================
 # Custom Data Sampling Functions
 # ====================================================================================
@@ -91,15 +140,20 @@ def nist_dataset(
     - Scans Parquet metadata to count total rows (no heavy load).
     - Randomly selects `num_spectra` rows across all files (or all rows if num_spectra >= total).
     - Streams selected rows with PyArrow iter_batches(), converts ν→λ, and linearly resamples
-      onto an inclusive λ-grid from 1.0..9.5 µm of length `num_points`.
+      onto an inclusive λ-grid from 2.5-9.5 µm of length `num_points`.
     - Returns a float32 array of shape (num_spectra, num_points).
 
     """
     files = list_parquet_files("data/spectra_data/raw/nist/IR_data_chunk*_of_009.parquet")
 
     # Build target λ-grid (inclusive endpoints). Change low_um=2.5 if you want to drop sub-2.5 entirely.
-    lam_grid_um = build_lambda_grid_um(num_points, low_um=1.0, high_um=9.5)
-
+    lam_grid_um = build_lambda_grid_um(num_points, low_um=2.5, high_um=9.5)
+    # Debug
+    print(lam_grid_um[:5])
+    print("...")
+    print(lam_grid_um[-5:])
+    print("Grid length:", len(lam_grid_um))
+    
     # 1) Count total rows across files (lightweight; metadata only)
     total, counts = _total_rows(files)
 
@@ -120,7 +174,6 @@ def nist_dataset(
         batch_size=512,
     )
     return X
-
 
 def custom1(
     num_spectra: int,
@@ -150,9 +203,21 @@ def main(seed: int,
     rng = np.random.default_rng(seed)
 
     S = generate_S(rng=rng, n_samples=n_samples, s_dim=s_dim, method=method)
+    # Debug
+    print(f"Shape of Spectrum: {S.shape}")
+    plt.figure(figsize=(8,3))
+    plt.plot(S[0])
+    plt.tight_layout()
+    plt.savefig(out_dir/"test_spectrum.png")
+    plt.close()
 
     R = np.load(responsivity)
+    # Debug
+    print(f"Shape of Responsivity: {R.shape}")
+
     I = S @ R
+    # Debug
+    print(f"Shape of Photocurrent: {R.shape}")
 
     np.save(out_dir / f"S.npy", S)
     np.save(out_dir / f"I.npy", I)
