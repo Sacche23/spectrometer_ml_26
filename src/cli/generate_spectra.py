@@ -248,20 +248,9 @@ def main(seed: int,
     rng = np.random.default_rng(seed)
 
     S = generate_S(rng=rng, n_samples=n_samples, wavelengths=wavelengths, method=method)
-    # Debug
-    print(f"Shape of Spectrum: {S.shape}")
-    plt.figure(figsize=(8,3))
-    plt.plot(S[0])
-    plt.tight_layout()
-    plt.savefig(out_dir/"test_spectrum.png")
-    plt.close()
-
-    # Debug
-    print(f"Shape of Responsivity: {R.shape}")
 
     I = S @ R
-    # Debug
-    print(f"Shape of Photocurrent: {R.shape}")
+
 
     np.save(out_dir / f"S.npy", S)
     np.save(out_dir / f"I.npy", I)
