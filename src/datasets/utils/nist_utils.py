@@ -113,11 +113,6 @@ def stream_selected_rows_from_parquet(
     rms_normalize: bool = True,
     batch_size: int = 512,
 ) -> np.ndarray:
-    """
-    Stream only the requested rows using PyArrow batches and resample each to lam_grid_um.
-    Returns X with shape (K, len(lam_grid_um)) in the same order as files/select_per_file iter.
-    """
-    # Preallocate exact size
     K = int(sum(len(v) for v in select_per_file.values()))
     X = np.empty((K, lam_grid_um.size), dtype=np.float32)
 
@@ -130,40 +125,43 @@ def stream_selected_rows_from_parquet(
             continue
 
         pf = pq.ParquetFile(f)
-        # We'll walk through the file in batches and pick out the rows we want.
-        # Columns we need:
         cols = ["Frequency(cm^-1)", "ir_spectra"]
 
-        # Index bookkeeping
-        next_local = 0  # next index in 'wanted'
-        taken = 0
-
+        next_local = 0
         row_cursor = 0
+
         for batch in pf.iter_batches(columns=cols, batch_size=batch_size):
-            b = batch.to_pydict()
-            freqs = b["Frequency(cm^-1)"]
-            specs = b["ir_spectra"]
-            n_in_batch = len(freqs)
+            n_in_batch = len(batch)
 
-            # Determine which desired local rows fall into this batch’s range
-            # Local row index within this file is [row_cursor, row_cursor+n_in_batch)
-            while next_local < wanted.size and wanted[next_local] < row_cursor + n_in_batch:
-                local_idx = wanted[next_local] - row_cursor
-                nu = np.asarray(freqs[local_idx], dtype=float)
-                I  = np.asarray(specs[local_idx], dtype=float)
+            # Figure out which wanted rows (if any) fall in THIS batch's
+            # range, WITHOUT converting the batch to Python yet.
+            hits = []
+            probe = next_local
+            while probe < wanted.size and wanted[probe] < row_cursor + n_in_batch:
+                hits.append(wanted[probe] - row_cursor)  # local offset within this batch
+                probe += 1
 
-                X[write_pos] = _resample_one_spectrum(
-                    nu_cm=nu, I_nu=I, lam_grid_um=lam_grid_um,
-                    low_nu_cutoff=low_nu_cutoff,
-                    apply_jacobian=apply_jacobian,
-                    rms_normalize=rms_normalize,
-                )
-                write_pos += 1
-                next_local += 1
-                taken += 1
+            if hits:
+                # Only now, and only for these specific rows, pay the
+                # conversion cost -- batch.take() pulls just the rows we
+                # need, still as an Arrow batch, THEN we convert.
+                sub = batch.take(hits).to_pydict()
+                freqs_sub = sub["Frequency(cm^-1)"]
+                specs_sub = sub["ir_spectra"]
+                for j in range(len(hits)):
+                    nu = np.asarray(freqs_sub[j], dtype=float)
+                    I  = np.asarray(specs_sub[j], dtype=float)
+                    X[write_pos] = _resample_one_spectrum(
+                        nu_cm=nu, I_nu=I, lam_grid_um=lam_grid_um,
+                        low_nu_cutoff=low_nu_cutoff,
+                        apply_jacobian=apply_jacobian,
+                        rms_normalize=rms_normalize,
+                    )
+                    write_pos += 1
+                next_local = probe
 
             row_cursor += n_in_batch
-            if taken == wanted.size:
+            if next_local == wanted.size:
                 break
 
     assert write_pos == K, f"Filled {write_pos} rows, expected {K}"
