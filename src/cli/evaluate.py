@@ -174,7 +174,10 @@ def main():
     print(f"Input dimension : {len(x0)}")
     print(f"Output dimension: {len(y0)}")
     # Build wavelength grid in metres — used for peak wavelength error
-    wl_grid = np.linspace(1e-6, 9.5e-6, len(y0))
+    meta = getattr(full_ds, "metadata", {})
+    lam_min_um = meta.get("lam_min_um", 1.0)
+    lam_max_um = meta.get("lam_max_um", 9.5)
+    wl_grid = np.linspace(lam_min_um * 1e-6, lam_max_um * 1e-6, len(y0))
 
     ModelClass = get_model(args.model)
     model = ModelClass(input_dim=len(x0), output_dim=len(y0)).to(device)

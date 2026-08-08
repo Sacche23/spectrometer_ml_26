@@ -19,21 +19,108 @@ from src.datasets.utils.nist_utils import (
     stream_selected_rows_from_parquet,
 )
 
-VALID_METHODS = {"rand_sop", "rand_sop_823", "uniform", "NIST", "custom1"}
+# ====================================================================================
+# Responsivity resolution (base matrix + on-demand cropping, with caching)
+# ====================================================================================
 
-def generate_S(rng: np.random.Generator, n_samples: int, s_dim : int, method : str):
-    if method == "uniform":
-        return rng.uniform(size=(n_samples, s_dim)).astype(float)
-    elif method == "rand_sop":
-        return sum_of_peaks(rng, n_samples, s_dim)
-    elif method == "rand_sop_823":
-        return sum_of_peaks_823(rng, n_samples, s_dim)
-    elif method == "NIST":
-        return nist_dataset(n_samples, s_dim)
-    elif method == "custom1":
-        return custom1(n_samples, s_dim)
+# The "master negative": one real calibration measurement of the BP sensor.
+# This never changes across experiments — it's the same physical device.
+BASE_DIR = Path("data/responsivity_data/processed")
+BASE_WAVELENGTHS_PATH = BASE_DIR / "wavelengths.npy"     # meters, full sensor range
+BASE_RESPONSIVITY_PATH = BASE_DIR / "responsivity.npy"   # shape (1000, 41)
+
+# Per-method default wavelength window, used only when the user doesn't
+# pass --lam-min/--lam-max explicitly on the command line.
+METHOD_DEFAULT_RANGE = {
+    "rand_sop":      (1.0, 9.5),
+    "uniform":       (1.0, 9.5),
+    "rand_sop_nist": (2.5, 9.5),
+    "NIST":          (2.5, 9.5),
+}
+
+def _range_tag(lam_min: float, lam_max: float) -> str:
+    """(2.5, 9.5) -> 'cropped_2p5_9p5' -- a filesystem-safe directory name."""
+    fmt = lambda x: f"{x:g}".replace(".", "p")
+    return f"cropped_{fmt(lam_min)}_{fmt(lam_max)}"
+
+def get_wavelength_grid_and_responsivity(lam_min: float, lam_max: float):
+    """
+    Resolve (wavelengths_um, R) for the requested [lam_min, lam_max] window.
+
+    - If the requested window covers the sensor's full measured range,
+      the base 1000-point files are used directly.
+    - Otherwise, crops the base matrix down to that window (no interpolation --
+      points outside the window are simply dropped), caches the result to
+      disk, and reuses the cache on future calls with the same range.
+    """
+    lam_full_um = np.load(BASE_WAVELENGTHS_PATH) * 1e6   # meters -> microns
+    full_min, full_max = float(lam_full_um.min()), float(lam_full_um.max())
+
+    if lam_min < full_min or lam_max > full_max:
+        raise ValueError(
+            f"Requested range [{lam_min}, {lam_max}] um is outside the sensor's "
+            f"measured range [{full_min:.3f}, {full_max:.3f}] um. The responsivity "
+            f"matrix can only be cropped, not extrapolated."
+        )
+
+    # Full range requested -> just use the base files, no cropping needed.
+    if np.isclose(lam_min, full_min) and np.isclose(lam_max, full_max):
+        return lam_full_um, np.load(BASE_RESPONSIVITY_PATH)
+
+    out_dir = BASE_DIR / _range_tag(lam_min, lam_max)
+    wl_path = out_dir / "wavelengths_um.npy"
+    r_path  = out_dir / "responsivity.npy"
+
+    # Cache hit -- reuse the previously-cropped version.
+    if wl_path.exists() and r_path.exists():
+        return np.load(wl_path), np.load(r_path)
+
+    # Cache miss -- crop now, from the base matrix, and save for next time.
+    R_full = np.load(BASE_RESPONSIVITY_PATH)
+    mask = (lam_full_um >= lam_min) & (lam_full_um <= lam_max)
+    n_keep = int(mask.sum())
+    if n_keep == 0:
+        raise ValueError(f"No wavelength points fall inside [{lam_min}, {lam_max}] um.")
+
+    axis0_matches = (R_full.shape[0] == lam_full_um.size)
+    axis1_matches = (R_full.shape[1] == lam_full_um.size)
+    if axis0_matches and not axis1_matches:
+        R_cropped = R_full[mask, :].astype(np.float32)
+    elif axis1_matches and not axis0_matches:
+        R_cropped = R_full[:, mask].astype(np.float32)
     else:
-        # should never hit this
+        raise ValueError(
+            f"Cannot determine wavelength axis: wavelengths size={lam_full_um.size}, "
+            f"R shape={R_full.shape}."
+        )
+
+    lam_cropped_um = lam_full_um[mask].astype(np.float32)
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    np.save(wl_path, lam_cropped_um)
+    np.save(r_path, R_cropped)
+    print(f"Cropped responsivity to [{lam_min}, {lam_max}] um -> {n_keep} points. "
+          f"Cached at {out_dir}")
+
+    return lam_cropped_um, R_cropped
+
+VALID_METHODS = {"rand_sop", "uniform", "NIST", "custom1"}
+
+# ====================================================================================
+# Dispatcher
+# ====================================================================================
+
+def generate_S(rng: np.random.Generator, n_samples: int, wavelengths: np.ndarray, method: str):
+    num_points = len(wavelengths)
+    if method == "uniform":
+        return rng.uniform(size=(n_samples, num_points)).astype(float)
+    elif method in ("rand_sop", "rand_sop_nist"):
+        return sum_of_peaks(rng, n_samples, wavelengths)
+    elif method == "NIST":
+        return nist_dataset(n_samples, wavelengths)
+    elif method == "custom1":
+        return custom1(n_samples, num_points)
+    else:
         raise ValueError(f"Unknown method {method}")
 
 # ====================================================================================
@@ -43,9 +130,7 @@ def generate_S(rng: np.random.Generator, n_samples: int, s_dim : int, method : s
 def sum_of_peaks(
     rng: np.random.Generator,
     num_spectra: int,
-    num_points: int,
-    low: float = 1.0,
-    high: float = 9.5,
+    wavelengths: np.ndarray,
     lam: float = 4.0,
     width_frac: tuple[float, float] = (0.005, 0.02),
     noise_std: float = 0.0,
@@ -53,59 +138,12 @@ def sum_of_peaks(
     """
     Generate spectra as a sum of N Gaussian peaks (N ~ ZTPoisson(lam)),
     then add a linear baseline + noise and normalize to unit RMS.
+    Operates on whatever wavelength grid is passed in -- the full 1000-point
+    sensor grid for 'rand_sop', or a cropped grid for 'rand_sop_nist'.
     """
     # build wavelength axis
-    wavelengths = np.linspace(low, high, num_points)
-    span = high - low
-
-    data = np.zeros((num_spectra, num_points), dtype=float)
-    for i in range(num_spectra):
-        # number of peaks
-        Np = 0
-        while Np == 0:
-            Np = rng.poisson(lam) #zero-truncated poission
-        # add peaks
-        for _ in range(Np):
-            center = rng.uniform(low, high)
-            width  = rng.uniform(width_frac[0]*span, width_frac[1]*span)
-            amp    = rng.lognormal(mean=0.0, sigma=1.0)
-            data[i] += amp * np.exp(-(wavelengths - center)**2 / (2 * width**2))
-        # linear baseline
-        b0 = rng.normal(0.0, baseline_std)
-        b1 = rng.normal(0.0, baseline_std)
-        data[i] += b0 + b1 * (wavelengths - (low + span/2))
-        # white noise
-        data[i] += rng.normal(0.0, noise_std, size=num_points)
-        # normalize to unit RMS
-        rms = np.sqrt(np.mean(data[i]**2))
-        data[i] /= (rms + 1e-6)
-
-    return data
-
-def sum_of_peaks_823(
-    rng: np.random.Generator,
-    num_spectra: int,
-    num_points: int,
-    lam: float = 4.0,
-    width_frac: tuple[float, float] = (0.005, 0.02),
-    noise_std: float = 0.0,
-    baseline_std: float = 0.001):
-    """
-    Generate spectra as a sum of N Gaussian peaks (N ~ ZTPoisson(lam)),
-    then add a linear baseline + noise and normalize to unit RMS.
-    To match the spacing of rand_sop 1000 and the lowest wavelength of the
-    NIST dataset, the # of points should be 823
-    """
-    # build wavelength axis
-    # Use the EXACT grid that crop_responsivity.py produced, so S and R
-    # refer to the same physical wavelengths row-for-row.
-    wavelengths = np.load("data/responsivity_data/processed/cropped_2p5_9p5/wavelengths_823_um.npy")    
-    assert len(wavelengths) == num_points, (
-        f"num_points ({num_points}) doesn't match the saved grid length ({len(wavelengths)})"
-    )
-
-    low  = float(wavelengths.min()) # ~2.5µm
-    high = float(wavelengths.max()) # ~9.5µm
+    num_points = len(wavelengths)
+    low, high = float(wavelengths.min()), float(wavelengths.max())
     span = high - low
 
     data = np.zeros((num_spectra, num_points), dtype=float)
@@ -138,7 +176,7 @@ def sum_of_peaks_823(
 
 def nist_dataset(
     num_spectra: int,
-    num_points: int
+    wavelengths: np.ndarray,
 ):
     """
     Memory-safe loader for Parquet IR data.
@@ -151,20 +189,6 @@ def nist_dataset(
 
     """
     files = list_parquet_files("data/spectra_data/raw/nist/IR_data_chunk*_of_009.parquet")
-
-    # Build target λ-grid (inclusive endpoints). 
-    # Use the EXACT grid that crop_responsivity.py produced, so S and R
-    # refer to the same physical wavelengths row-for-row.
-    lam_grid_um = np.load("data/responsivity_data/processed/cropped_2p5_9p5/wavelengths_823_um.npy")
-    assert len(lam_grid_um) == num_points, (
-        f"num_points ({num_points}) doesn't match the saved grid length ({len(lam_grid_um)})"
-    )
-
-    # Debug
-    print(lam_grid_um[:5])
-    print("...")
-    print(lam_grid_um[-5:])
-    print("Grid length:", len(lam_grid_um))
 
     # 1) Count total rows across files (lightweight; metadata only)
     total, counts = _total_rows(files)
@@ -179,7 +203,7 @@ def nist_dataset(
     X = stream_selected_rows_from_parquet(
         files=files,
         select_per_file=per_file,
-        lam_grid_um=lam_grid_um,
+        lam_grid_um=wavelengths,
         low_nu_cutoff=50.0,
         apply_jacobian=True,   # set True if you want per-µm intensity
         rms_normalize=True,
@@ -209,12 +233,20 @@ def main(seed: int,
     
     if method not in VALID_METHODS:
         raise ValueError(f"Invalid method '{method}'. Valid choices are: {sorted(VALID_METHODS)}")
+
+    default_min, default_max = METHOD_DEFAULT_RANGE[method]
+    lam_min = default_min if lam_min is None else lam_min
+    lam_max = default_max if lam_max is None else lam_max
+
+    wavelengths, R = get_wavelength_grid_and_responsivity(lam_min, lam_max)
+    print(f"Using {len(wavelengths)}-point grid over [{lam_min}, {lam_max}] um "
+          f"(method={method})")
     
     out_dir = Path(f"data/spectra_data/processed/{method}")
     out_dir.mkdir(parents=True, exist_ok=True)
     rng = np.random.default_rng(seed)
 
-    S = generate_S(rng=rng, n_samples=n_samples, s_dim=s_dim, method=method)
+    S = generate_S(rng=rng, n_samples=n_samples, wavelengths=wavelengths, method=method)
     # Debug
     print(f"Shape of Spectrum: {S.shape}")
     plt.figure(figsize=(8,3))
@@ -223,7 +255,6 @@ def main(seed: int,
     plt.savefig(out_dir/"test_spectrum.png")
     plt.close()
 
-    R = np.load(responsivity)
     # Debug
     print(f"Shape of Responsivity: {R.shape}")
 
@@ -236,35 +267,34 @@ def main(seed: int,
     print(f"Wrote S.shape={S.shape}, I.shape={I.shape} to {out_dir!r}")
 
     metadata = {
-    "dataset_version": 1,
-    "method": method,
-    "seed": seed,
-    "n_samples": n_samples,
-    "s_dim": s_dim,
-    "responsivity": args.responsivity,
-    "S_shape": list(S.shape),
-    "I_shape": list(I.shape),
-    "created": datetime.now().isoformat(timespec="seconds")
+        "dataset_version": 2,
+        "method": method,
+        "seed": seed,
+        "n_samples": n_samples,
+        "s_dim": S.shape[1],
+        "lam_min_um": lam_min,
+        "lam_max_um": lam_max,
+        "S_shape": list(S.shape),
+        "I_shape": list(I.shape),
+        "created": datetime.now().isoformat(timespec="seconds"),
     }
-
     with open(out_dir / "dataset.json", "w") as f:
         json.dump(metadata, f, indent=4)
 
-if __name__=="__main__":
+if __name__ == "__main__":
     p = argparse.ArgumentParser()
-    p.add_argument("--seed",       type=int,   default=42)
-    p.add_argument("--n-samples",  type=int,   default=50000)
-    p.add_argument("--s-dim",      type=int,   default=1000,
-                   help="length of each 'true' spectrum")
-    p.add_argument("--method",     type=str,   required=True,
-                   choices=sorted(VALID_METHODS),
-                   help="generation method")
-    p.add_argument("--responsivity",type=str,  required=True)
+    p.add_argument("--seed", type=int, default=42)
+    p.add_argument("--n-samples", type=int, default=50000)
+    p.add_argument("--method", type=str, required=True, choices=sorted(VALID_METHODS))
+    p.add_argument("--lam-min", type=float, default=None,
+                   help="Lower wavelength bound (um). Defaults to the method's "
+                        "standard range: 1.0um for rand_sop/uniform, 2.5um for NIST/rand_sop_nist.")
+    p.add_argument("--lam-max", type=float, default=None,
+                   help="Upper wavelength bound (um). Defaults to 9.5um.")
     args = p.parse_args()
     main(
-    args.seed,
-    args.n_samples,
-    args.s_dim,
-    args.method,
-    args.responsivity,
-    )
+        args.seed, 
+        args.n_samples, 
+        args.method, 
+        args.lam_min, 
+        args.lam_max)

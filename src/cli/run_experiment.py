@@ -270,7 +270,6 @@ def main():
         "--experiment-dir", str(experiment_dir),
         "--models",         *evaluated_models,
         "--dataset",        args.dataset,
-        "--responsivity",   args.responsivity,
         "--seed",           str(args.seed),
         "--val-size",       str(args.validation_size),
     ]

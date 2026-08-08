@@ -38,10 +38,10 @@ def gaussian_smooth(wl, vals, lam_cont):
 
 def MSE(pred, gt, low_idx, high_idx):
     """
-    Mean squared error between pred and gt, computed only over the
-    wavelength range [low_idx, high_idx]. Only score the model over the 
-    2-9 µm operational range, not the full 1-9.5 µm grid where the 
-    device has poor responsivity.
+    Mean squared error between pred and gt, computed only over
+    [low_idx, high_idx] -- the wavelength band where the model is
+    actually meant to be scored (typically the device's usable
+    responsivity band, clipped to the dataset's coverage).
     """
     diff_squared = [(pred[i] - gt[i]) ** 2 for i in range(low_idx, high_idx)]
     return np.mean(diff_squared)
@@ -164,8 +164,6 @@ def main():
                    help="One or more registered model names to compare, e.g. --models dnn cnn2")
     p.add_argument("--dataset", "-d", required=True,
                    help="Registered dataset name, e.g. rand_sop")
-    p.add_argument("--responsivity", required=True,
-                   help="Path to responsivity matrix .npy file")
 
     # Optional arguments (match defaults used throughout the rest of the codebase)
     p.add_argument("--root", type=str, default="data/spectra_data/")
@@ -219,6 +217,14 @@ def main():
     print(f"  Validation set: {len(S_val)} samples")
     print(f"  Input dim: {I_val.shape[1]}, Output dim: {S_val.shape[1]}")
 
+    # Pull the real wavelength range from dataset.json instead of assuming
+    # every dataset spans 1.0-9.5 um. Falls back to the historical default
+    # only if an older dataset.json (pre-metadata) is being used.
+    meta = getattr(full_ds, "metadata", {})
+    lam_min_um = meta.get("lam_min_um", 1.0)
+    lam_max_um = meta.get("lam_max_um", 9.5)
+    print(f"  Wavelength range from dataset.json: {lam_min_um}-{lam_max_um} um")
+
     # Optionally inject noise into evaluation currents.
     # This tests how robust each model is to measurement noise.
     if args.noise_std > 0:
@@ -241,11 +247,28 @@ def main():
     # ------------------------------------------------------------------
 
     num_cont_bins = 10000
-    x_low,      x_high      = 1e-6, 9.5e-6   # full grid: 1 to 9.5 µm
-    x_meas_low, x_meas_high = 2e-6, 9e-6     # scored range: 2 to 9 µm
+   # The BP sensor's known-good operational band (Yuan et al., 2021 / your
+    # proposal's Aim 1) -- a physical property of the hardware, independent
+    # of any particular dataset's wavelength range.
+    DEVICE_SCORE_MIN_UM = 2.0
+    DEVICE_SCORE_MAX_UM = 9.0
+
+    x_low,  x_high  = lam_min_um * 1e-6, lam_max_um * 1e-6   # dataset's actual range
+
+    # Score wherever the device's usable band and the dataset's coverage
+    # overlap -- never score outside what the dataset can even provide.
+    x_meas_low  = max(x_low,  DEVICE_SCORE_MIN_UM * 1e-6)
+    x_meas_high = min(x_high, DEVICE_SCORE_MAX_UM * 1e-6)
+
+    if x_meas_low >= x_meas_high:
+        raise ValueError(
+            f"Dataset range [{lam_min_um}, {lam_max_um}] um doesn't overlap "
+            f"the device's scorable band [{DEVICE_SCORE_MIN_UM}, {DEVICE_SCORE_MAX_UM}] um."
+        )
+
+    rnge = x_high - x_low
 
     cont_vals = np.linspace(x_low, x_high, num_cont_bins)
-    rnge      = x_high - x_low
     low_idx   = int(((x_meas_low  - x_low) / rnge) * num_cont_bins) + 1  # inclusive
     high_idx  = int(((x_meas_high - x_low) / rnge) * num_cont_bins)      # exclusive
 
@@ -355,7 +378,7 @@ def main():
             for model_name in loaded_models:
                 ax.plot(cont_vals * 1e6, smoothed[model_name], label=model_name, linewidth=1.2)
             ax.axvspan(x_meas_low * 1e6, x_meas_high * 1e6, alpha=0.07, color="blue",
-                       label="Scored range (2–9 µm)")
+                       label=f"Scored range ({x_meas_low*1e6:.1f}–{x_meas_high*1e6:.1f} µm)")
             ax.set_xlabel("Wavelength (µm)")
             ax.set_ylabel("Normalized response")
             ax.set_title(f"Sample {i}")
