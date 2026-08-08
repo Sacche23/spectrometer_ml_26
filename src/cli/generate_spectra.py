@@ -36,6 +36,7 @@ METHOD_DEFAULT_RANGE = {
     "uniform":       (1.0, 9.5),
     "rand_sop_nist": (2.5, 9.5),
     "NIST":          (2.5, 9.5),
+    "nist":          (2.5, 9.5),
 }
 
 def _range_tag(lam_min: float, lam_max: float) -> str:
@@ -116,7 +117,7 @@ def generate_S(rng: np.random.Generator, n_samples: int, wavelengths: np.ndarray
         return rng.uniform(size=(n_samples, num_points)).astype(float)
     elif method in ("rand_sop", "rand_sop_nist"):
         return sum_of_peaks(rng, n_samples, wavelengths)
-    elif method == "NIST":
+    elif method in ("nist", "NIST"):
         return nist_dataset(n_samples, wavelengths)
     elif method == "custom1":
         return custom1(n_samples, num_points)
@@ -226,9 +227,9 @@ def custom1(
 
 def main(seed: int,
          n_samples: int,
-         s_dim: int,
          method: str,
-         responsivity: str,
+         lam_min: float,
+         lam_max: float,
          ):
     
     if method not in VALID_METHODS:

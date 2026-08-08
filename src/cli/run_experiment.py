@@ -104,9 +104,6 @@ def main():
     p.add_argument("--device",                type=str,   default=None)
 
     # ---- Comparison settings ----
-    p.add_argument("--responsivity", required=True,
-                   help="Path to responsivity matrix .npy file, "
-                        "e.g. data/responsivity_data/processed/responsivity.npy")
     p.add_argument("--no-plot", action="store_true",
                    help="Skip per-sample plots in the comparison step (faster).")
     p.add_argument("--auto-compare", action="store_true",
