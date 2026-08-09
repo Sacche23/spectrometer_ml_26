@@ -105,7 +105,11 @@ def get_wavelength_grid_and_responsivity(lam_min: float, lam_max: float):
 
     return lam_cropped_um, R_cropped
 
-VALID_METHODS = {"rand_sop", "uniform", "NIST", "custom1"}
+VALID_METHODS = {"rand_sop", 
+                 "rand_sop_nist", "rand_sop_NIST", 
+                 "uniform", 
+                 "NIST", "nist", 
+                 "custom1"}
 
 # ====================================================================================
 # Dispatcher
