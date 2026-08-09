@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=unet_final_3
+#SBATCH --job-name=unet_cnn_mlp
 #SBATCH --output=logs/%j.out
 #SBATCH --error=logs/%j.err
 #SBATCH --partition=gpu
@@ -17,8 +17,8 @@ source ~/venvs/spectro/bin/activate
 python3 -m src.cli.run_experiment \
     --models \
         unet_8_0.2 \
-        unet_8_0.5 \
-        unet_16_0.5 \
+        cnn2 \
+        cui_mlp_v2 \
     --dataset rand_sop \
     --seed 42 \
     --batch-size 64 \
@@ -31,6 +31,5 @@ python3 -m src.cli.run_experiment \
     --validation-size 500 \
     --num-workers 4 \
     --device cuda \
-    --experiment-dir experiments/unet_final_3 \
-    --responsivity data/responsivity_data/processed/responsivity.npy \
+    --experiment-dir experiments/unet_cnn_mlp \
     "$@"

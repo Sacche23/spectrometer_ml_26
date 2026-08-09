@@ -8,10 +8,10 @@ class SumOfPeaksDataset(NPYCachedDataset):
     def __init__(self, root, seed=42, transform=None):
         super().__init__(root, name="rand_sop", seed=seed, transform=transform)
 
-@register_dataset("rand_sop_823")
+@register_dataset("rand_sop_nist")
 class SumOfPeaksDataset(NPYCachedDataset):
     def __init__(self, root, seed=42, transform=None):
-        super().__init__(root, name="rand_sop_823", seed=seed, transform=transform)
+        super().__init__(root, name="rand_sop_nist", seed=seed, transform=transform)
 
 # REAL DATASETS
 

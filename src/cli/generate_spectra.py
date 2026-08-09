@@ -20,6 +20,34 @@ from src.datasets.utils.nist_utils import (
 )
 
 # ====================================================================================
+# Method name normalization
+# ====================================================================================
+
+# Maps *any* accepted spelling to its one canonical name. Add new synonyms
+# here only -- nowhere else needs to know about alternate spellings.
+METHOD_ALIASES = {
+    "rand_sop":      "rand_sop",
+    "uniform":       "uniform",
+    "rand_sop_nist": "rand_sop_nist",
+    "nist":          "NIST",
+    "custom1":       "custom1",
+}
+
+def canonicalize_method(method: str) -> str:
+    """
+    Case-insensitively resolve a user-supplied --method string to its
+    one canonical spelling, so every other function in this file only
+    ever has to handle a single, known name per dataset.
+    """
+    key = method.strip().lower()
+    if key not in METHOD_ALIASES:
+        raise ValueError(
+            f"Invalid method '{method}'. Valid choices are: "
+            f"{sorted(set(METHOD_ALIASES.values()))}"
+        )
+    return METHOD_ALIASES[key]
+
+# ====================================================================================
 # Responsivity resolution (base matrix + on-demand cropping, with caching)
 # ====================================================================================
 
@@ -36,7 +64,6 @@ METHOD_DEFAULT_RANGE = {
     "uniform":       (1.0, 9.5),
     "rand_sop_nist": (2.5, 9.5),
     "NIST":          (2.5, 9.5),
-    "nist":          (2.5, 9.5),
 }
 
 def _range_tag(lam_min: float, lam_max: float) -> str:
@@ -105,23 +132,19 @@ def get_wavelength_grid_and_responsivity(lam_min: float, lam_max: float):
 
     return lam_cropped_um, R_cropped
 
-VALID_METHODS = {"rand_sop", 
-                 "rand_sop_nist", "rand_sop_NIST", 
-                 "uniform", 
-                 "NIST", "nist", 
-                 "custom1"}
-
 # ====================================================================================
 # Dispatcher
 # ====================================================================================
 
-def generate_S(rng: np.random.Generator, n_samples: int, wavelengths: np.ndarray, method: str):
+def generate_S(rng, n_samples, wavelengths, method):
     num_points = len(wavelengths)
     if method == "uniform":
         return rng.uniform(size=(n_samples, num_points)).astype(float)
-    elif method in ("rand_sop", "rand_sop_nist"):
+    elif method == "rand_sop":
         return sum_of_peaks(rng, n_samples, wavelengths)
-    elif method in ("nist", "NIST"):
+    elif method == "rand_sop_nist":
+        return sum_of_peaks(rng, n_samples, wavelengths)
+    elif method == "NIST":
         return nist_dataset(n_samples, wavelengths)
     elif method == "custom1":
         return custom1(n_samples, num_points)
@@ -235,9 +258,8 @@ def main(seed: int,
          lam_min: float,
          lam_max: float,
          ):
-    
-    if method not in VALID_METHODS:
-        raise ValueError(f"Invalid method '{method}'. Valid choices are: {sorted(VALID_METHODS)}")
+
+    method = canonicalize_method(method)   # <-- the ONLY place case-handling happens
 
     default_min, default_max = METHOD_DEFAULT_RANGE[method]
     lam_min = default_min if lam_min is None else lam_min
@@ -279,7 +301,9 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--n-samples", type=int, default=50000)
-    p.add_argument("--method", type=str, required=True, choices=sorted(VALID_METHODS))
+    p.add_argument("--method", type=str, required=True,
+                help=f"Generation method (case-insensitive). "
+                        f"Valid choices: {sorted(set(METHOD_ALIASES.values()))}")
     p.add_argument("--lam-min", type=float, default=None,
                    help="Lower wavelength bound (um). Defaults to the method's "
                         "standard range: 1.0um for rand_sop/uniform, 2.5um for NIST/rand_sop_nist.")
