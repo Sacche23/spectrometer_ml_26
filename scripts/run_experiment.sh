@@ -17,7 +17,7 @@ source ~/venvs/spectro/bin/activate
 set -e
 
 MODEL="cui_mlp_v2"
-DATASET="rand_sop"
+DATASET="rand_sop_nist"
 SEED=23
 
 NUM_EPOCHS=1
@@ -27,7 +27,7 @@ LEARNING_RATE_DECAY=0.1
 GAUSSIAN_NOISE=True
 GAUSSIAN_NOISE_STD=1e-4
 
-VALIDATION_SIZE=400
+VALIDATION_SIZE=500
 NUM_WORKERS=4
 DEVICE="cuda"
 

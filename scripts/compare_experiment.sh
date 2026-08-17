@@ -13,7 +13,6 @@ python3 -m src.cli.compare_experiment \
     --experiment-dir experiments/20260710_1519_rand_sop_seed42 \
     --models dnn cnn2 \
     --dataset rand_sop \
-    --responsivity data/responsivity_data/processed/responsivity.npy \
     --seed 42 \
     --val-size 200 \
     --device cpu \
