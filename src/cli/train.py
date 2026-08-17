@@ -28,6 +28,9 @@ def train(
         learning_rate_decay: float,
         learning_rate_period: int,
 
+        weight_decay: float,
+        weight_decay_type: str,
+
         gaussian_noise: bool,
         gaussian_noise_std: float,
 
@@ -109,8 +112,10 @@ def train(
 
     # LOSS AND OPTIMIZER
 
+    l2_decay = weight_decay if weight_decay_type == "l2" else 0.0
+
     criterion = nn.MSELoss()
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-4)
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=l2_decay)
     scheduler = StepLR(optimizer, step_size=learning_rate_period, gamma=learning_rate_decay) # multiply lr * gamma every N steps
 
     # TRACK MSE LOSS
@@ -205,8 +210,6 @@ def train(
         model.train()
         running_loss = 0.0
         
-        print(f"Epoch: {epoch}\n")
-
         for batch_idx, (currents, spectra) in enumerate(train_loader, start=1):
             currents = currents.to(device, non_blocking=True)
             spectra = spectra.to(device, non_blocking=True)
@@ -217,6 +220,11 @@ def train(
             optimizer.zero_grad()
             outputs = model(currents)
             loss = criterion(outputs, spectra)
+
+            if weight_decay_type == "l1" and weight_decay > 0:
+                l1_penalty = weight_decay * sum(p.abs().sum() for p in model.parameters())
+                loss = loss + l1_penalty
+
             loss.backward()
             optimizer.step()
 
@@ -340,6 +348,9 @@ if __name__=="__main__":
     parser.add_argument('--learning-rate-decay', type=float, required=True, help='Every period learning rate is mutliplied by this factor')
     parser.add_argument('--learning-rate-period', type=int, required=True, help='Number of epochs before learning rate decay occurs')
 
+    parser.add_argument("--weight-decay", type=float, default=0.0, help="Weight decay strength. 0 to turn off.")
+    parser.add_argument("--weight-decay-type", type=str, default="l2", choices=["l1", "l2"], help="l2: built into Adam optimizer. l1: manual penalty added to loss.")
+
     parser.add_argument('--gaussian-noise', type=bool, required=True, help='True if gaussian noise is to be added onto current vectors')
     parser.add_argument('--gaussian-noise-std', type=float, required=False, default=1e-4, help='Standard deviation of gaussian noise')
 
@@ -378,6 +389,8 @@ if __name__=="__main__":
           learning_rate=args.learning_rate,
           learning_rate_decay=args.learning_rate_decay,
           learning_rate_period=args.learning_rate_period,
+          weight_decay=args.weight_decay,
+          weight_decay_type=args.weight_decay_type,
           gaussian_noise=args.gaussian_noise,
           gaussian_noise_std=args.gaussian_noise_std,
           validation_size=args.validation_size,

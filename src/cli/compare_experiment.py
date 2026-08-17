@@ -145,6 +145,93 @@ def plot_loss_comparison(experiment_dir: Path, model_names: list, comparison_dir
     plt.close(fig)
     print(f"Saved loss comparison plot to {out_path}")
 
+def run_overfitting_analysis(experiment_dir: Path, model_names: list, comparison_dir: Path):
+    """
+    For each model, reads its metrics.json and loss_history.json and computes:
+      - train/val MSE gap and ratio (how much worse val is than train)
+      - best epoch (when val loss was lowest)
+      - overfit % (how much val loss rose from its best to the final epoch)
+
+    Prints a summary table and saves overfitting_summary.csv to the comparison dir.
+    """
+    rows = []
+
+    for model_name in model_names:
+        model_dir = experiment_dir / model_name
+
+        # ---- Read metrics.json for train/val MSE ----
+        metrics_file = model_dir / "evaluation" / "metrics.json"
+        if not metrics_file.exists():
+            print(f"  WARNING: no metrics.json for '{model_name}', skipping.")
+            continue
+
+        with open(metrics_file) as f:
+            metrics = json.load(f)
+
+        train_mse = metrics["train"]["mse"]
+        val_mse   = metrics["validation"]["mse"]
+        mse_gap   = val_mse - train_mse
+        ratio     = val_mse / train_mse if train_mse > 0 else float("inf")
+
+        # ---- Read loss_history.json for convergence info ----
+        history_file = model_dir / "evaluation" / "loss_history.json"
+        best_epoch = metrics.get("epoch", "?")
+        overfit_pct = None
+
+        if history_file.exists():
+            with open(history_file) as f:
+                history = json.load(f)
+
+            val_loss = history["val_loss"]
+            epochs   = history["epoch"]
+
+            best_idx   = min(range(len(val_loss)), key=lambda i: val_loss[i])
+            best_epoch = epochs[best_idx]
+            best_val   = val_loss[best_idx]
+            final_val  = val_loss[-1]
+
+            if best_val > 0:
+                overfit_pct = (final_val - best_val) / best_val * 100
+
+        rows.append({
+            "model":       model_name,
+            "train_mse":   train_mse,
+            "val_mse":     val_mse,
+            "mse_gap":     mse_gap,
+            "val/train":   ratio,
+            "best_epoch":  best_epoch,
+            "overfit_%":   overfit_pct,
+        })
+
+    if not rows:
+        print("  No overfitting data available.")
+        return
+
+    # Sort by least overfitting (smallest gap)
+    rows.sort(key=lambda r: r["mse_gap"])
+
+    # ---- Print summary table ----
+    print()
+    print("=" * 80)
+    print("OVERFITTING ANALYSIS")
+    print("=" * 80)
+    print(f"{'Model':<20}  {'Gap':>12}  {'Ratio':>8}  {'BestEp':>8}  {'Overfit %':>12}")
+    print("-" * 80)
+    for r in rows:
+        overfit_str = f"{r['overfit_%']:>12.2f}" if r["overfit_%"] is not None else f"{'N/A':>12}"
+        print(f"{r['model']:<20}  {r['mse_gap']:>12.4e}  "
+              f"{r['val/train']:>8.3f}  {str(r['best_epoch']):>8}  {overfit_str}")
+    print("=" * 80)
+
+    # ---- Save CSV ----
+    csv_path = comparison_dir / "overfitting_summary.csv"
+    with open(csv_path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=rows[0].keys())
+        writer.writeheader()
+        writer.writerows(rows)
+    print(f"Saved overfitting summary to {csv_path}")
+        
+
 # ====================================================================================
 # Main
 # ====================================================================================
@@ -533,6 +620,10 @@ def main():
 
     print(f"Saved summary to {summary_path}")
 
+    # ------------------------------------------------------------------
+    # Overfitting analysis
+    # ------------------------------------------------------------------
+    run_overfitting_analysis(experiment_dir, loaded_models, comparison_dir)
 
 if __name__ == "__main__":
     main()
