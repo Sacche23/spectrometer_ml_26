@@ -10,12 +10,12 @@
 #SBATCH --mail-user=diego.sacchettoni@yale.edu
 
 python3 -m src.cli.train \
-    --experiment-dir experiments/debug_unet \
+    --experiment-dir experiments/debug_venv \
 	--dataset rand_sop \
-	--model unet \
+	--model cui_mlp_v2 \
 	--seed 42 \
 	--batch-size 32 \
-	--num-epochs 100 \
+	--num-epochs 1 \
 	--learning-rate 1e-3 \
 	--learning-rate-decay 0.6 \
 	--learning-rate-period 100 \
