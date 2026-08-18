@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=mlp_search_2
+#SBATCH --job-name=unet_search_2
 #SBATCH --output=logs/%j.out
 #SBATCH --error=logs/%j.err
 #SBATCH --partition=gpu
@@ -16,14 +16,14 @@ source ~/venvs/spectro/bin/activate
 
 set -e
 
-MODEL="cui_mlp_v2"
+MODEL="unet_8_0.2"
 DATASET="rand_sop_nist"
 SEED=23
 
 NUM_EPOCHS=800
 
 LEARNING_RATE_DECAY=0.1
-LEARNING_RATE_PERIOD=100
+LEARNING_RATE_PERIOD=200
 
 GAUSSIAN_NOISE=True
 GAUSSIAN_NOISE_STD=1e-4
@@ -32,13 +32,13 @@ VALIDATION_SIZE=500
 NUM_WORKERS=4
 DEVICE="cuda"
 
-EXPERIMENT_DIR="experiments/mlp_search_2"
+EXPERIMENT_DIR="experiments/unet_search_2"
 
 mkdir -p "$EXPERIMENT_DIR"
 mkdir -p logs
 
-LEARNING_RATES=(1e-4 2e-4 3e-4 4e-4 5e-4)
-BATCH_SIZES=(64 128 256)
+LEARNING_RATES=(5e-4 7.5e-4 1e-3 1.25e-3 1.5e-3)
+BATCH_SIZES=(16 32 64)
 
 for LR in "${LEARNING_RATES[@]}"; do
     for BATCH in "${BATCH_SIZES[@]}"; do
