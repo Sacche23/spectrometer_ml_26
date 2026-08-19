@@ -33,31 +33,44 @@ NUM_WORKERS=4
 DEVICE="cuda"
 
 EXPERIMENT_DIR="experiments/unet_search_2"
+CHECKPOINT="experiments/unet_search_2/lr_1.25e-3_bs_16_period_200/unet_8_0.2/checkpoints/latest.pth"
 
 mkdir -p "$EXPERIMENT_DIR"
 mkdir -p logs
 
-LEARNING_RATES=(5e-4 7.5e-4 1e-3 1.25e-3 1.5e-3)
+LEARNING_RATES=(1.25e-3 1.5e-3)
 BATCH_SIZES=(16 32 64)
 
 for LR in "${LEARNING_RATES[@]}"; do
     for BATCH in "${BATCH_SIZES[@]}"; do
-        RUN_NAME="lr_${LR}_bs_${BATCH}_period_${LEARNING_RATE_PERIOD}"
 
-        python3 -m src.cli.run_experiment \
-            --models "$MODEL" \
-            --dataset "$DATASET" \
-            --seed "$SEED" \
-            --batch-size "$BATCH" \
-            --num-epochs "$NUM_EPOCHS" \
-            --learning-rate "$LR" \
-            --learning-rate-decay "$LEARNING_RATE_DECAY" \
-            --learning-rate-period "$LEARNING_RATE_PERIOD" \
-            --gaussian-noise "$GAUSSIAN_NOISE" \
-            --gaussian-noise-std "$GAUSSIAN_NOISE_STD" \
-            --validation-size "$VALIDATION_SIZE" \
-            --num-workers "$NUM_WORKERS" \
-            --device "$DEVICE" \
-            --experiment-dir "$EXPERIMENT_DIR/$RUN_NAME"
+        RUN_NAME="lr_${LR}_bs_${BATCH}_period_${LEARNING_RATE_PERIOD}"
+        RUN_DIR="$EXPERIMENT_DIR/$RUN_NAME"
+        CHECKPOINT="$RUN_DIR/$MODEL/checkpoints/latest.pth"
+
+        CMD=(
+            python3 -m src.cli.run_experiment
+            --models "$MODEL"
+            --dataset "$DATASET"
+            --seed "$SEED"
+            --batch-size "$BATCH"
+            --num-epochs "$NUM_EPOCHS"
+            --learning-rate "$LR"
+            --learning-rate-decay "$LEARNING_RATE_DECAY"
+            --learning-rate-period "$LEARNING_RATE_PERIOD"
+            --gaussian-noise "$GAUSSIAN_NOISE"
+            --gaussian-noise-std "$GAUSSIAN_NOISE_STD"
+            --validation-size "$VALIDATION_SIZE"
+            --num-workers "$NUM_WORKERS"
+            --device "$DEVICE"
+            --experiment-dir "$RUN_DIR"
+        )
+
+        if [ -f "$CHECKPOINT" ]; then
+            CMD+=(--resume "$CHECKPOINT")
+        fi
+
+        "${CMD[@]}"
+
     done
 done

@@ -144,6 +144,10 @@ def main():
                    help="DataLoader worker count.")
     p.add_argument("--device", type=str, default=None,
                    help="Device: cpu or cuda.")
+    p.add_argument("--resume", type=str, nargs="+", default=None,
+               metavar="PATH",
+               help="Checkpoint path(s) to resume from. "
+                    "1 value or one per model.")
  
     # ---- Weight decay (regularization) ----
     p.add_argument("--weight-decay", type=float, nargs="+", default=[0.0],
@@ -185,6 +189,10 @@ def main():
         noise_stds      = resolve_per_model(args.gaussian_noise_std,    n_models, "gaussian-noise-std")
         weight_decays   = resolve_per_model(args.weight_decay,          n_models, "weight-decay")
         wd_types        = resolve_per_model(args.weight_decay_type,     n_models, "weight-decay-type")
+        if args.resume is not None:
+            resume_paths = resolve_per_model(args.resume, n_models, "resume")
+        else:
+            resume_paths = [None] * n_models
     except ValueError as e:
         print(e)
         sys.exit(1)
@@ -241,6 +249,8 @@ def main():
             "--weight-decay",         str(weight_decays[i]),
             "--weight-decay-type",    wd_types[i],
         ]
+        if resume_paths[i] is not None:
+            train_cmd += ["--resume", resume_paths[i]]
         if args.device:
             train_cmd += ["--device", args.device]
  
