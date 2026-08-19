@@ -33,7 +33,6 @@ NUM_WORKERS=4
 DEVICE="cuda"
 
 EXPERIMENT_DIR="experiments/unet_search_2"
-CHECKPOINT="experiments/unet_search_2/lr_1.25e-3_bs_16_period_200/unet_8_0.2/checkpoints/latest.pth"
 
 mkdir -p "$EXPERIMENT_DIR"
 mkdir -p logs
