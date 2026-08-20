@@ -250,7 +250,12 @@ def main():
             "--weight-decay-type",    wd_types[i],
         ]
         if resume_paths[i] is not None:
-            train_cmd += ["--resume", resume_paths[i]]
+            resume_path = Path(resume_paths[i])
+            if not resume_path.exists():
+                print(f"\n  ERROR: resume checkpoint not found for '{model_name}': {resume_path}")
+                print(  "  Skipping this model.")
+                continue
+            train_cmd += ["--resume", str(resume_path)]
         if args.device:
             train_cmd += ["--device", args.device]
  

@@ -3,6 +3,7 @@ import numpy as np
 import torch
 import argparse
 import random
+import time
 import json
 import csv
 from torch.utils.data import DataLoader
@@ -75,6 +76,63 @@ def peak_wavelength_error(pred: np.ndarray, gt: np.ndarray,
     pred_peak_um = wl_grid[np.argmax(pred)] * 1e6   # convert m → µm
     gt_peak_um   = wl_grid[np.argmax(gt)]   * 1e6
     return float(abs(pred_peak_um - gt_peak_um))
+
+def benchmark_inference(model, input_dim, n_warmup=50, n_reps=100, n_threads=1):
+    """
+    Measures single-sample inference latency on CPU.
+
+    Designed to reflect real-world deployment conditions for a miniaturized
+    spectrometer, where the target platform is an embedded CPU or FPGA. 
+    - CPU only
+    - Batch size (1)
+    - Fixed thread count (single processor, 1)
+    - 50 warm-ups
+    - 100 timed repetitions, report median
+    Returns a dict with median, std, min, max latency in ms.
+    """
+    cpu = torch.device("cpu")
+
+    # Move model to CPU for benchmarking — keep original device for inference
+    model_cpu = model.to(cpu)
+    model_cpu.eval()
+
+    # Lock thread count — must be restored afterward
+    original_threads = torch.get_num_threads()
+    torch.set_num_threads(n_threads)
+
+    # Single random sample — batch size 1
+    dummy = torch.randn(1, input_dim, device=cpu)
+
+    # Warm-up: triggers JIT, fills CPU instruction cache, warms memory allocator
+    with torch.no_grad():
+        for _ in range(n_warmup):
+            _ = model_cpu(dummy)
+
+    # Timed repetitions
+    times_ms = []
+    with torch.no_grad():
+        for _ in range(n_reps):
+            t0 = time.perf_counter()
+            _ = model_cpu(dummy)
+            t1 = time.perf_counter()
+            times_ms.append((t1 - t0) * 1000)
+
+    # Restore original thread count so the rest of the script is unaffected
+    torch.set_num_threads(original_threads)
+
+    times_ms = np.array(times_ms)
+
+    return {
+        "median_ms":  float(np.median(times_ms)),
+        "q25_ms":     float(np.percentile(times_ms, 25)),
+        "q75_ms":     float(np.percentile(times_ms, 75)),
+        "std_ms":     float(np.std(times_ms)),
+        "min_ms":     float(np.min(times_ms)),
+        "max_ms":     float(np.max(times_ms)),
+        "n_warmup":   n_warmup,
+        "n_reps":     n_reps,
+        "n_threads":  n_threads,
+    }
 
 def dataset_to_numpy(ds):
     """Load an entire dataset split into numpy arrays in one shot."""
@@ -334,9 +392,7 @@ def main():
     # ------------------------------------------------------------------
 
     num_cont_bins = 10000
-   # The BP sensor's known-good operational band (Yuan et al., 2021 / your
-    # proposal's Aim 1) -- a physical property of the hardware, independent
-    # of any particular dataset's wavelength range.
+    # The BP sensor's known-good operational band (Yuan et al., 2021 
     DEVICE_SCORE_MIN_UM = 2.0
     DEVICE_SCORE_MAX_UM = 9.0
 
@@ -379,19 +435,29 @@ def main():
         state = torch.load(ckpt_path, map_location=device)
         epoch = state.get("epoch", "?") if isinstance(state, dict) else "?"
 
+        # --- Batch inference for predictions (use GPU if available, fast) ---
+
         with torch.no_grad():
             preds = model(x_all).cpu().numpy()
 
-        # Explicitly free GPU memory before loading next model
+        # --- Single-sample CPU latency benchmark (deployment-relevant) ---
+        timing = benchmark_inference(model, input_dim, n_warmup=50, n_reps=100, n_threads=1)
+        print(f"  {model_name}: {timing['median_ms']:.3f} ms/sample "
+            f"(IQR {timing['q25_ms']:.3f}–{timing['q75_ms']:.3f}, "
+            f"min {timing['min_ms']:.3f}, max {timing['max_ms']:.3f}) "
+            f"[{timing['n_reps']} reps, {timing['n_threads']} thread]")
+
+        # Explicitly free up memory before loading next model
         del model
         torch.cuda.empty_cache()
 
         preds_smoothed = smooth_batch(wl_full, preds, cont_vals)
 
         model_results[model_name] = {
-            "predictions": preds,
+            "predictions":          preds,
             "predictions_smoothed": preds_smoothed,
-            "epoch": epoch,
+            "epoch":                epoch,
+            "timing":               timing,
         }
 
     if not model_results:
@@ -450,11 +516,12 @@ def main():
             y_gt_g[low_idx:high_idx]
             )
             
-            scored_cont = cont_vals[low_idx:high_idx]
-            pred_peak_um = scored_cont[np.argmax(smoothed[model_name][low_idx:high_idx])] * 1e6
-            gt_peak_um   = scored_cont[np.argmax(y_gt_g[low_idx:high_idx])]               * 1e6
-            pwe_totals[model_name] += abs(pred_peak_um - gt_peak_um)
-
+            pwe_totals[model_name] += peak_wavelength_error(
+                smoothed[model_name][low_idx:high_idx],
+                y_gt_g[low_idx:high_idx],
+                cont_vals[low_idx:high_idx]
+            )
+            
         diff_gt = y_gt_g[low_idx:high_idx] - np.mean(y_gt_g[low_idx:high_idx])
         sst_total += np.sum(diff_gt ** 2)
 
@@ -479,23 +546,36 @@ def main():
     # ------------------------------------------------------------------
 
     n = len(S_val)
-    avg_mse = {m: mse_totals[m] / n         for m in loaded_models}
-    r2      = {m: 1 - sse[m] / sst_total    for m in loaded_models}
-    avg_sam = {m: sam_totals[m] / n         for m in loaded_models}   
-    avg_pwe = {m: pwe_totals[m] / n         for m in loaded_models}   
-
-    print("\n" + "=" * 68)
+    avg_mse  = {m: mse_totals[m] / n                            for m in loaded_models}
+    r2       = {m: 1 - sse[m] / sst_total                       for m in loaded_models}
+    avg_sam  = {m: sam_totals[m] / n                            for m in loaded_models}   
+    avg_pwe  = {m: pwe_totals[m] / n                            for m in loaded_models}
+    
+    print("\n" + "=" * 110)
     print("COMPARISON SUMMARY")
-    print("=" * 68)
-    print(f"{'Model':<12}  {'Avg MSE':>12}  {'R²':>8}  {'SAM (°)':>9}  {'PWE (µm)':>10}  {'Best Epoch':>10}")
-    print("-" * 68)
+    print("=" * 110)
+    print(
+        f"{'Model':<12}  "
+        f"{'Avg MSE':>12}  "
+        f"{'R²':>8}  "
+        f"{'SAM (°)':>9}  "
+        f"{'PWE (µm)':>10}  "
+        f"{'Best Epoch':>10}  "
+        f"{'Latency (ms/sample)':>14}"
+    )
+    print("-" * 110)
     for model_name in loaded_models:
-        print(f"{model_name:<12}  {avg_mse[model_name]:>12.4e}  "
+        t = model_results[model_name]["timing"]
+        print(
+            f"{model_name:<12}  "
+            f"{avg_mse[model_name]:>12.4e}  "
             f"{r2[model_name]:>8.4f}  "
             f"{avg_sam[model_name]:>9.3f}  "
             f"{avg_pwe[model_name]:>10.4f}  "
-            f"{model_results[model_name]['epoch']:>10}")
-    print("=" * 68)
+            f"{model_results[model_name]['epoch']:>10}  "
+            f"{t['median_ms']:>12.3f} ±{t['std_ms']:.3f}"
+            )
+    print("=" * 110)
 
     # ------------------------------------------------------------------
     # Save metrics.json
@@ -510,15 +590,21 @@ def main():
         "normalized": args.normalize,
         "scored_range_um": [x_meas_low * 1e6, x_meas_high * 1e6],
         "models": {
-            model_name: {
-                "best_epoch": model_results[model_name]["epoch"],
-                "avg_mse": avg_mse[model_name],
-                "r2": r2[model_name],
-                "avg_sam_deg": avg_sam[model_name],
-                "avg_pwe_um":  avg_pwe[model_name],
-            }
-            for model_name in loaded_models
+        model_name: {
+            "best_epoch":            model_results[model_name]["epoch"],
+            "avg_mse":               avg_mse[model_name],
+            "r2":                    r2[model_name],
+            "avg_sam_deg":           avg_sam[model_name],
+            "avg_pwe_um":            avg_pwe[model_name],
+            "inference_median_ms":   model_results[model_name]["timing"]["median_ms"],
+            "inference_std_ms":      model_results[model_name]["timing"]["std_ms"],
+            "inference_min_ms":      model_results[model_name]["timing"]["min_ms"],
+            "inference_max_ms":      model_results[model_name]["timing"]["max_ms"],
+            "inference_n_reps":      model_results[model_name]["timing"]["n_reps"],
+            "inference_n_threads":   model_results[model_name]["timing"]["n_threads"],
         }
+        for model_name in loaded_models
+    }
     }
 
     metrics_path = comparison_dir / "metrics.json"
@@ -533,16 +619,23 @@ def main():
     csv_path = comparison_dir / "metrics.csv"
     with open(csv_path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=[
-            "model", "avg_mse", "r2", "avg_sam_deg", "avg_pwe_um", "best_epoch"])        
+            "model", "avg_mse", "r2", "avg_sam_deg", "avg_pwe_um",
+            "best_epoch", "latency_median_ms", "latency_std_ms",
+            "latency_min_ms", "latency_max_ms"])
         writer.writeheader()
         for model_name in loaded_models:
+            t = model_results[model_name]["timing"]
             writer.writerow({
-                "model":       model_name,
-                "avg_mse":     avg_mse[model_name],
-                "r2":          r2[model_name],
-                "avg_sam_deg": avg_sam[model_name],
-                "avg_pwe_um":  avg_pwe[model_name],
-                "best_epoch":  model_results[model_name]["epoch"],
+                "model":            model_name,
+                "avg_mse":          avg_mse[model_name],
+                "r2":               r2[model_name],
+                "avg_sam_deg":      avg_sam[model_name],
+                "avg_pwe_um":       avg_pwe[model_name],
+                "best_epoch":       model_results[model_name]["epoch"],
+                "latency_median_ms": t["median_ms"],
+                "latency_std_ms":   t["std_ms"],
+                "latency_min_ms":   t["min_ms"],
+                "latency_max_ms":   t["max_ms"],
             })
     print(f"Saved CSV to {csv_path}")
 
@@ -550,34 +643,47 @@ def main():
     # Comparison bar chart
     # ------------------------------------------------------------------
 
-    fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+    fig, axes = plt.subplots(2, 3, figsize=(12, 8))
     axes = axes.flatten()
 
     models_list = loaded_models
-    mse_vals    = [avg_mse[m] for m in models_list]
-    r2_vals     = [r2[m]      for m in models_list]
-    sam_vals    = [avg_sam[m] for m in models_list]
-    pwe_vals    = [avg_pwe[m] for m in models_list]
+    mse_vals    = [avg_mse[m]               for m in models_list]
+    r2_vals     = [r2[m]                    for m in models_list]
+    sam_vals    = [avg_sam[m]               for m in models_list]
+    pwe_vals    = [avg_pwe[m]               for m in models_list]
+    inf_median  = [model_results[m]["timing"]["median_ms"] for m in models_list]
+    inf_q25     = [model_results[m]["timing"]["q25_ms"]        for m in models_list]
+    inf_q75     = [model_results[m]["timing"]["q75_ms"]        for m in models_list]    
     colors      = plt.cm.tab10.colors[:len(models_list)]
 
     axes[0].bar(models_list, mse_vals, color=colors)
-    axes[0].set_title("Avg MSE (lower is better)")
+    axes[0].set_title("Avg MSE")
     axes[0].set_ylabel("MSE")
     axes[0].set_xlabel("Model")
 
     axes[1].bar(models_list, r2_vals, color=colors)
-    axes[1].set_title("R² (higher is better)")
+    axes[1].set_title("R²")
     axes[1].set_ylabel("R²")
     axes[1].set_xlabel("Model")
     axes[1].set_ylim(min(0, min(r2_vals)) - 0.05, 1.05)
 
     axes[2].bar(models_list, sam_vals, color=colors)
-    axes[2].set_title("Avg SAM in degrees (lower is better)")
+    axes[2].set_title("Avg SAM in degrees")
     axes[2].set_ylabel("SAM (°)")
+    axes[2].set_xlabel("Model")
 
     axes[3].bar(models_list, pwe_vals, color=colors)
-    axes[3].set_title("Avg Peak Wavelength Error (lower is better)")
+    axes[3].set_title("Avg Peak Wavelength Error")
     axes[3].set_ylabel("PWE (µm)")
+    axes[3].set_xlabel("Model")
+
+    inf_err = [np.array(inf_median) - np.array(inf_q25), np.array(inf_q75) - np.array(inf_median)]
+    axes[4].bar(models_list, inf_median, color=colors, yerr=inf_err)
+    axes[4].set_title("Inference Latency — median (IQR)")
+    axes[4].set_ylabel("Time (ms/sample, batch=1, 1 thread, CPU)")
+    axes[4].set_xlabel("Model")
+
+    axes[5].set_visible(False)
 
     fig.suptitle(f"Model Comparison — {args.dataset}, seed {args.seed}", fontsize=12)
     fig.tight_layout()
@@ -607,14 +713,17 @@ def main():
         f.write(f"Normalized : {args.normalize}\n")
         f.write(f"Scored range: {x_meas_low*1e6:.1f}-{x_meas_high*1e6:.1f} um\n\n")
         f.write(f"{'Model':<12}  {'Avg MSE':>12}  {'R^2':>8}  "
-                f"{'SAM(deg)':>10}  {'PWE(um)':>9}  {'Best Epoch':>10}\n")
+                f"{'SAM(deg)':>10}  {'PWE(um)':>9}  {'Best Epoch':>10}"
+                f"{'Inference(ms/sample)':>22}\n")
         f.write("-" * 70 + "\n")
         for model_name in loaded_models:
+            t = model_results[model_name]["timing"]
             f.write(f"{model_name:<12}  {avg_mse[model_name]:>12.4e}  "
                     f"{r2[model_name]:>8.4f}  "
                     f"{avg_sam[model_name]:>10.3f}  "
                     f"{avg_pwe[model_name]:>9.4f}  "
-                    f"{model_results[model_name]['epoch']:>10}\n")
+                    f"{model_results[model_name]['epoch']:>10}  "
+                    f"{t['median_ms']:>10.3f} ±{t['std_ms']:.3f}\n")
         best = min(loaded_models, key=lambda m: avg_mse[m])
         f.write(f"\nBest model by MSE: {best}\n")
 
