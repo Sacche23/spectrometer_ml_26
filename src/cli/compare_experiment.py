@@ -210,7 +210,7 @@ def run_overfitting_analysis(experiment_dir: Path, model_names: list, comparison
       - best epoch (when val loss was lowest)
       - overfit % (how much val loss rose from its best to the final epoch)
 
-    Prints a summary table and saves overfitting_summary.csv to the comparison dir.
+    Prints a summary table and saves overfitting_summary to the comparison dir.
     """
     rows = []
 
@@ -288,8 +288,110 @@ def run_overfitting_analysis(experiment_dir: Path, model_names: list, comparison
         writer.writeheader()
         writer.writerows(rows)
     print(f"Saved overfitting summary to {csv_path}")
-        
+    
+    # ---- Save .txt ----
 
+    txt_path = comparison_dir / "overfitting_summary.txt"
+
+    with open(txt_path, "w") as f:
+
+        f.write("=" * 110 + "\n")
+        f.write("OVERFITTING ANALYSIS\n")
+        f.write("=" * 110 + "\n\n")
+
+        f.write(
+            "Metrics:\n"
+            "  MSE Gap             = Validation MSE - Training MSE\n"
+            "  Validation/Train    = Validation MSE / Training MSE\n"
+            "  Overfit %           = Increase in validation loss from best epoch to final epoch\n"
+            "  Validation Degrad.  = Final validation loss - best validation loss\n"
+            "  After Best          = Number of epochs trained after the best validation epoch\n\n"
+        )
+
+        # ---- Table ----
+
+        f.write(
+            f"{'Model':<20}  "
+            f"{'Gap':>12}  "
+            f"{'Ratio':>8}  "
+            f"{'BestEp':>8}  "
+            f"{'Overfit %':>12}  "
+            f"{'Val Degrad.':>14}  "
+            f"{'After Best':>12}\n"
+        )
+
+        f.write("-" * 110 + "\n")
+
+        for r in rows:
+
+            overfit_str = (
+                f"{r['overfit_%']:.4f}"
+                if r["overfit_%"] is not None
+                else "N/A"
+            )
+
+            degradation_str = (
+                f"{r['validation_degradation']:.6e}"
+                if r["validation_degradation"] is not None
+                else "N/A"
+            )
+
+            after_best_str = (
+                str(r["epochs_after_best"])
+                if r["epochs_after_best"] is not None
+                else "N/A"
+            )
+
+            f.write(
+                f"{r['model']:<20}  "
+                f"{r['mse_gap']:>12.6e}  "
+                f"{r['val/train']:>8.4f}  "
+                f"{str(r['best_epoch']):>8}  "
+                f"{overfit_str:>12}  "
+                f"{degradation_str:>14}  "
+                f"{after_best_str:>12}\n"
+            )
+
+        f.write("=" * 110 + "\n\n")
+
+        # ---- Detailed model information ----
+
+        f.write("DETAILED RESULTS\n")
+        f.write("-" * 110 + "\n\n")
+
+        for r in rows:
+            f.write(f"Model: {r['model']}\n")
+            f.write(f"  Training MSE:            {r['train_mse']:.6e}\n")
+            f.write(f"  Validation MSE:          {r['val_mse']:.6e}\n")
+            f.write(f"  MSE gap:                 {r['mse_gap']:.6e}\n")
+            f.write(f"  Validation/train ratio:  {r['val/train']:.6f}\n")
+            f.write(f"  Best epoch:              {r['best_epoch']}\n")
+
+            if r["overfit_%"] is not None:
+                f.write(f"  Overfit:                 {r['overfit_%']:.6f}%\n")
+            else:
+                f.write("  Overfit:                 N/A\n")
+
+            if r["validation_degradation"] is not None:
+                f.write(
+                    f"  Validation degradation:  "
+                    f"{r['validation_degradation']:.6e}\n"
+                )
+            else:
+                f.write("  Validation degradation:  N/A\n")
+
+            if r["epochs_after_best"] is not None:
+                f.write(
+                    f"  Epochs after best:       "
+                    f"{r['epochs_after_best']}\n"
+                )
+            else:
+                f.write("  Epochs after best:       N/A\n")
+
+            f.write("\n")
+
+    print(f"Saved overfitting summary to {txt_path}")
+    
 # ====================================================================================
 # Main
 # ====================================================================================
