@@ -14,7 +14,7 @@ module reset
 
 source ~/venvs/spectro/bin/activate
 
-python3 -m src.cli.run_experiment \
+python3 -u -m src.cli.run_experiment \
     --models cui_mlp_v2 cnn2 unet_8_0.2 \
     --dataset rand_sop_nist \
     --seed 64 \

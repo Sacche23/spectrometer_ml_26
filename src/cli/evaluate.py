@@ -123,7 +123,7 @@ def main():
 
     # PRINT MODEL 
 
-    print(f"Training model {args.model}")
+    print(f"Evaluating model {args.model}")
 
     # DEVICE SETUP
     device = torch.device(args.device) if args.device else \
